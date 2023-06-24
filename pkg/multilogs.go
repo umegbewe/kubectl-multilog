@@ -7,6 +7,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"sync"
@@ -14,7 +15,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/sirupsen/logrus"
 	"github.com/spaolacci/murmur3"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 var colorPool = []color.Attribute{
@@ -28,7 +28,7 @@ var colorPool = []color.Attribute{
 
 var colorMap = map[string]func(...interface{}) string{}
 
-func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespace string, selector string, initContainers bool, previous bool, tailLines int64) error {
+func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespace string, selectors []string, containers []string, previous bool, tailLines int64) error {
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.ExplicitPath = kubeconfig
@@ -45,41 +45,45 @@ func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, k
 		return fmt.Errorf("error building kubernetes clientset: %v", err)
 	}
 
-	pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
-	if err != nil {
-		return fmt.Errorf("error listing pods: %v", err)
-	}
+	found := false
 
-	if len(pods.Items) == 0 {
-		return fmt.Errorf("no pods found matching selector %s", selector)
-	}
+	for _, selector := range selectors {
+		pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 
-	logger.Infof("Found %d pod(s)", len(pods.Items))
-
-	var wg sync.WaitGroup
-	for _, pod := range pods.Items {
-		for _, container := range pod.Spec.Containers {
-			wg.Add(1)
-			streamLogger := logger.WithFields(logrus.Fields{
-				"pod":       pod.Name,
-				"namespace": pod.Namespace,
-				"container": container.Name,
-			})
-			go streamContainerLogs(ctx, streamLogger, clientset, pod, container.Name, previous, tailLines, &wg)
+		if err != nil || len(pods.Items) == 0 {
+			// Quite a tradeoff, please revisit
+			// Skip to the next selector if an error occurs or no pods are found
+			continue
 		}
-		if initContainers {
-			for _, container := range pod.Spec.InitContainers {
-				streamLogger := logger.WithFields(logrus.Fields{
-					"pod":       pod.Name,
-					"namespace": pod.Namespace,
-					"container": container.Name,
-				})
-				go streamContainerLogs(ctx, streamLogger, clientset, pod, container.Name, previous, tailLines, &wg)
+
+		found = true
+		logger.Infof("Found %d pod(s)", len(pods.Items))
+
+		var wg sync.WaitGroup
+		for _, pod := range pods.Items {
+			for _, container := range containers {
+				wg.Add(1)
+				if hasContainer(pod, container) {
+					// only stream logs for containers that exist in the pod
+					streamLogger := logger.WithFields(logrus.Fields{
+						"pod":       pod.Name,
+						"namespace": pod.Namespace,
+						"container": container,
+					})
+					go streamContainerLogs(ctx, streamLogger, clientset, pod, container, previous, tailLines, &wg)
+				} else {
+					logger.Warnf("Container %s not found in pod %s", container, pod.Name)
+				}
 			}
 		}
+		wg.Wait()
+		break
 	}
 
-	wg.Wait()
+	if !found {
+		return fmt.Errorf("no pods found matching the provided selectors in any cluster")
+	}
+
 	return nil
 }
 
@@ -113,6 +117,11 @@ func streamContainerLogs(ctx context.Context, logger *logrus.Entry, clientset *k
 	scanner := bufio.NewScanner(podLogs)
 
 	for scanner.Scan() {
+		if ctx.Err() != nil {
+			logger.Debugf("context canceled, stopping log stream")
+			return
+		}
+		
 		prefix := fmt.Sprintf("[pod=%s][namespace=%s][container=%s] %s", pod.Name, pod.Namespace, container, scanner.Text())
 		fmt.Println(colorFunc(prefix))
 	}
@@ -139,4 +148,14 @@ func getColorFuncForPod(pod string, containerName string) func(...interface{}) s
 
 	colorFunc := color.New(colorPool[colorIndex]).SprintFunc()
 	return colorFunc
+}
+
+// helper function to check if a pod has a container with a specific name
+func hasContainer(pod corev1.Pod, container string) bool {
+	for _, c := range pod.Spec.Containers {
+		if c.Name == container {
+			return true
+		}
+	}
+	return false
 }

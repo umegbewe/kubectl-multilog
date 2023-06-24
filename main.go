@@ -24,13 +24,12 @@ func main() {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
 
-	contexts := flag.String("context", "", "context to use")
+	contexts := flag.String("context", "", "context to use, comma seperated")
 	namespace := flag.String("namespace", "default", "namespace to use")
 	logLevel := flag.String("log-level", "info", "log level to use")
-	//container := flag.String("container", "", "container to use")
-	selector := flag.String("selector", "", "label selector to use")
+	container := flag.String("container", "", "container to use, comma seperated")
+	selector := flag.String("selector", "", "label selector to use, comma seperated")
 	tailLines := flag.Int64("n", 100, "number of lines to tail")
-	initContainers := flag.Bool("init-containers", false, "include init containers")
 	previous := flag.Bool("previous", false, "include previous terminated containers")
 	flag.Parse()
 
@@ -53,6 +52,8 @@ func main() {
 	}()
 
 	kubeContext := strings.Split(*contexts, ",")
+	selectors := strings.Split(*selector, ",")
+	containers := strings.Split(*container, ",")
 
 	var wg sync.WaitGroup
 
@@ -60,7 +61,7 @@ func main() {
 		wg.Add(1)
 		go func(context string) {
 			defer wg.Done()
-			err = multilog.StreamLogs(ctx, logger, *kubeconfig, context, *namespace, *selector, *initContainers, *previous, *tailLines)
+			err = multilog.StreamLogs(ctx, logger, *kubeconfig, context, *namespace, selectors, containers, *previous, *tailLines)
 			if err != nil {
 				logger.Errorf("Error streaming logs from context %s: %v", kubeContext, err)
 			}
