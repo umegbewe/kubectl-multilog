@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/sirupsen/logrus"
@@ -22,6 +24,7 @@ func main() {
 		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 	}
 
+	contexts := flag.String("context", "", "context to use")
 	namespace := flag.String("namespace", "default", "namespace to use")
 	logLevel := flag.String("log-level", "info", "log level to use")
 	//container := flag.String("container", "", "container to use")
@@ -48,10 +51,21 @@ func main() {
 		cancel()
 	}()
 
-	err = multilog.StreamLogs(ctx, logger, *kubeconfig, *namespace, *selector, *initContainers, *previous)
-	if err != nil {
-		logger.Fatalf("Error streaming logs: %v", err)
-		os.Exit(1)
+	kubeContext := strings.Split(*contexts, ",")
+
+	var wg sync.WaitGroup
+
+	for _, context := range kubeContext {
+		wg.Add(1)
+		go func(context string) {
+			defer wg.Done()
+			err = multilog.StreamLogs(ctx, logger, *kubeconfig, context, *namespace, *selector, *initContainers, *previous)
+			if err != nil {
+				logger.Errorf("Error streaming logs from context %s: %v", kubeContext, err)
+			}
+		}(context)
 	}
+
+	wg.Wait()
 
 }

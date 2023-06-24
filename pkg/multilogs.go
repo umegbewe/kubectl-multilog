@@ -28,13 +28,19 @@ var colorPool = []color.Attribute{
 
 var colorMap = map[string]func(...interface{}) string{}
 
-func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, namespace string, selector string, initContainers bool, previous bool) error {
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespace string, selector string, initContainers bool, previous bool) error {
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	loadingRules.ExplicitPath = kubeconfig
+	overrides := &clientcmd.ConfigOverrides{CurrentContext: kubeContext}
+
+	config := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides)
+	clientConfig, err := config.ClientConfig()
 	if err != nil {
 		return fmt.Errorf("error building kubeconfig: %v", err)
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(clientConfig)
 	if err != nil {
 		return fmt.Errorf("error building kubernetes clientset: %v", err)
 	}
