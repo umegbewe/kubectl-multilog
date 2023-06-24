@@ -1,4 +1,4 @@
-package multilogs
+package multilog
 
 import (
 	"bufio"
