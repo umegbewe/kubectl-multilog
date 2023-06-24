@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	multilog "github.com/umegbewe/multilog/pkg"
+	multilog "github.com/umegbewe/kubectl-multilog/pkg"
 	"os"
 	"os/signal"
 	"path/filepath"
