@@ -29,6 +29,7 @@ func main() {
 	logLevel := flag.String("log-level", "info", "log level to use")
 	//container := flag.String("container", "", "container to use")
 	selector := flag.String("selector", "", "label selector to use")
+	tailLines := flag.Int64("n", 100, "number of lines to tail")
 	initContainers := flag.Bool("init-containers", false, "include init containers")
 	previous := flag.Bool("previous", false, "include previous terminated containers")
 	flag.Parse()
@@ -59,7 +60,7 @@ func main() {
 		wg.Add(1)
 		go func(context string) {
 			defer wg.Done()
-			err = multilog.StreamLogs(ctx, logger, *kubeconfig, context, *namespace, *selector, *initContainers, *previous)
+			err = multilog.StreamLogs(ctx, logger, *kubeconfig, context, *namespace, *selector, *initContainers, *previous, *tailLines)
 			if err != nil {
 				logger.Errorf("Error streaming logs from context %s: %v", kubeContext, err)
 			}

@@ -28,7 +28,7 @@ var colorPool = []color.Attribute{
 
 var colorMap = map[string]func(...interface{}) string{}
 
-func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespace string, selector string, initContainers bool, previous bool) error {
+func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespace string, selector string, initContainers bool, previous bool, tailLines int64) error {
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.ExplicitPath = kubeconfig
@@ -65,7 +65,7 @@ func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, k
 				"namespace": pod.Namespace,
 				"container": container.Name,
 			})
-			go streamContainerLogs(ctx, streamLogger, clientset, pod, container.Name, previous, &wg)
+			go streamContainerLogs(ctx, streamLogger, clientset, pod, container.Name, previous, tailLines, &wg)
 		}
 		if initContainers {
 			for _, container := range pod.Spec.InitContainers {
@@ -74,7 +74,7 @@ func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, k
 					"namespace": pod.Namespace,
 					"container": container.Name,
 				})
-				go streamContainerLogs(ctx, streamLogger, clientset, pod, container.Name, previous, &wg)
+				go streamContainerLogs(ctx, streamLogger, clientset, pod, container.Name, previous, tailLines, &wg)
 			}
 		}
 	}
@@ -83,7 +83,7 @@ func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, k
 	return nil
 }
 
-func streamContainerLogs(ctx context.Context, logger *logrus.Entry, clientset *kubernetes.Clientset, pod corev1.Pod, container string, previous bool, wg *sync.WaitGroup) {
+func streamContainerLogs(ctx context.Context, logger *logrus.Entry, clientset *kubernetes.Clientset, pod corev1.Pod, container string, previous bool, tailLines int64, wg *sync.WaitGroup) {
 	defer wg.Done()
 	logger = logger.WithFields(logrus.Fields{
 		"pod":       pod.Name,
@@ -95,6 +95,7 @@ func streamContainerLogs(ctx context.Context, logger *logrus.Entry, clientset *k
 		Container: container,
 		Follow:    true,
 		Previous:  previous,
+		TailLines: &tailLines,
 	})
 
 	podLogs, err := req.Stream(ctx)
