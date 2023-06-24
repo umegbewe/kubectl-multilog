@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"flag"
-	multilogs "github.com/umegbewe/multilogs/pkg"
+	multilog "github.com/umegbewe/multilog/pkg"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -48,7 +48,7 @@ func main() {
 		cancel()
 	}()
 
-	err = multilogs.StreamLogs(ctx, logger, *kubeconfig, *namespace, *selector, *initContainers, *previous)
+	err = multilog.StreamLogs(ctx, logger, *kubeconfig, *namespace, *selector, *initContainers, *previous)
 	if err != nil {
 		logger.Fatalf("Error streaming logs: %v", err)
 		os.Exit(1)
