@@ -2,10 +2,11 @@
 Stream tailed logs from multiple kubernetes pods
 CLI tool for real-time streaming of logs from multiple Kubernetes pods. 
 
-It allows users to monitor logs across multiple containers across mulitple pod in a kubernetes cluster, with options for tailing and filtering, useful for debugging purposes.
+It allows users to monitor logs across containers, across pods and kubernetes clusters, with options for tailing and filtering, useful for debugging purposes.
 
 ## Features
 * Real-time streaming of logs from selected pods and containers.
+* Fetch logs across multiple clusters
 * Color-coding to differentiate logs from different pods/containers.
 * ~~Fetch logs based on timestamps (sinceSeconds or sinceTime).~~
 * Supports logs from init containers.
@@ -30,12 +31,14 @@ Here's how to use the :
 ``kubectl multilog --help``
 
 ```
---kubeconfig <kubeconfig_path> --namespace <namespace> --selector <label_selector> --init-containers <bool> --previous <bool>
+--kubeconfig <kubeconfig_path> --context <kubernetes,context> --namespace <namespace> --selector <label_selector> --init-containers <bool> --previous <bool>
 ```
 
 Options:
 
 `kubeconfig:` Path to the kubeconfig file. Defaults to ~/.kube/config.
+
+`context:` Optional, seperated by commas
 
 `namespace:` Kubernetes namespace to use. Defaults to default.
 
