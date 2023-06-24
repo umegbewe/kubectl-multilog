@@ -1,4 +1,4 @@
-module github.com/umegbewe/multilogs
+module github.com/umegbewe/multilog
 
 go 1.20
 
