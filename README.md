@@ -4,6 +4,10 @@ CLI tool for real-time streaming of logs from multiple Kubernetes pods.
 
 It allows users to monitor logs across containers, across pods and kubernetes clusters, with options for tailing and filtering, useful for debugging purposes.
 
+## Demo
+
+[![asciicast](https://asciinema.org/a/593139.svg)](https://asciinema.org/a/593139)
+
 ## Features
 * Real-time streaming of logs from selected pods and containers.
 * Fetch logs across multiple clusters
