@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/sirupsen/logrus"
 )
@@ -43,12 +44,18 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
+	defer cancel()
+
 	signalChan := make(chan os.Signal, 1)
 	signal.Notify(signalChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-signalChan
 		logger.Info("Received termination, stopping logs streams.....")
 		cancel()
+
+		// Give the streams some time to stop gracefully
+		time.Sleep(2 * time.Second)
+		os.Exit(0)
 	}()
 
 	kubeContext := strings.Split(*contexts, ",")
@@ -63,7 +70,7 @@ func main() {
 			defer wg.Done()
 			err = multilog.StreamLogs(ctx, logger, *kubeconfig, context, *namespace, selectors, containers, *previous, *tailLines)
 			if err != nil {
-				logger.Errorf("Error streaming logs from context %s: %v", kubeContext, err)
+				logger.Errorf("Error streaming logs from context %s: %v", context, err)
 			}
 		}(context)
 	}
