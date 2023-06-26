@@ -4,13 +4,14 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"sync"
+
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
-	"sync"
 
 	"github.com/fatih/color"
 	"github.com/sirupsen/logrus"
@@ -28,7 +29,7 @@ var colorPool = []color.Attribute{
 
 var colorMap = map[string]func(...interface{}) string{}
 
-func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespace string, selectors []string, containers []string, previous bool, tailLines int64) error {
+func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, kubeContext string, namespaces []string, selectors []string, containers []string, previous bool, tailLines int64) error {
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
 	loadingRules.ExplicitPath = kubeconfig
@@ -47,37 +48,39 @@ func StreamLogs(ctx context.Context, logger *logrus.Logger, kubeconfig string, k
 
 	found := false
 
-	for _, selector := range selectors {
-		pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	for _, namespace := range namespaces {
+		for _, selector := range selectors {
+			pods, err := clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 
-		if err != nil || len(pods.Items) == 0 {
-			// Quite a tradeoff, please revisit
-			// Skip to the next selector if an error occurs or no pods are found
-			continue
-		}
+			if err != nil || len(pods.Items) == 0 {
+				// Quite a tradeoff, please revisit
+				// Skip to the next selector if an error occurs or no pods are found
+				continue
+			}
 
-		found = true
-		logger.Infof("Found %d pod(s)", len(pods.Items))
+			found = true
+			logger.Infof("Found %d pod(s)", len(pods.Items))
 
-		var wg sync.WaitGroup
-		for _, pod := range pods.Items {
-			for _, container := range containers {
-				wg.Add(1)
-				if hasContainer(pod, container) {
-					// only stream logs for containers that exist in the pod
-					streamLogger := logger.WithFields(logrus.Fields{
-						"pod":       pod.Name,
-						"namespace": pod.Namespace,
-						"container": container,
-					})
-					go streamContainerLogs(ctx, streamLogger, clientset, pod, container, previous, tailLines, &wg)
-				} else {
-					logger.Warnf("Container %s not found in pod %s", container, pod.Name)
+			var wg sync.WaitGroup
+			for _, pod := range pods.Items {
+				for _, container := range containers {
+					wg.Add(1)
+					if hasContainer(pod, container) {
+						// only stream logs for containers that exist in the pod
+						streamLogger := logger.WithFields(logrus.Fields{
+							"pod":       pod.Name,
+							"namespace": pod.Namespace,
+							"container": container,
+						})
+						go streamContainerLogs(ctx, streamLogger, clientset, pod, container, previous, tailLines, &wg)
+					} else {
+						logger.Warnf("Container %s not found in pod %s", container, pod.Name)
+					}
 				}
 			}
+			wg.Wait()
+			break
 		}
-		wg.Wait()
-		break
 	}
 
 	if !found {
@@ -121,7 +124,7 @@ func streamContainerLogs(ctx context.Context, logger *logrus.Entry, clientset *k
 			logger.Debugf("context canceled, stopping log stream")
 			return
 		}
-		
+
 		prefix := fmt.Sprintf("[pod=%s][namespace=%s][container=%s] %s", pod.Name, pod.Namespace, container, scanner.Text())
 		fmt.Println(colorFunc(prefix))
 	}
