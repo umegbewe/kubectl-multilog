@@ -1,8 +1,7 @@
 # kubectl-multilog
-Stream tailed logs from multiple kubernetes pods
-CLI tool for real-time streaming of logs from multiple Kubernetes pods. 
 
-It allows users to monitor logs across containers, across pods and kubernetes clusters, with options for tailing and filtering, useful for debugging purposes.
+
+CLI tool for real-time streaming of logs from multiple Kubernetes pods. 
 
 ## Demo
 
