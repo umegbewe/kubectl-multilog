@@ -1,0 +1,285 @@
+package k8s
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/util/homedir"
+)
+
+type LogEntry struct {
+	Timestamp time.Time
+	Namespace string
+	Pod       string
+	Container string
+	Message   string
+	Level     string
+}
+
+type Client struct {
+	clientset *kubernetes.Clientset
+	debugLog  *log.Logger
+	logFile   *os.File
+}
+
+func NewClient() (*Client, error) {
+	logFile, err := os.OpenFile("debug.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	debugLog := log.New(os.Stderr, "K8S_CLIENT: ", log.Ltime|log.Lshortfile)
+
+	kubeconfig := filepath.Join(homedir.HomeDir(), ".kube", "config")
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		logFile.Close()
+		return nil, err
+	}
+
+	return &Client{clientset: clientset, debugLog: debugLog, logFile: logFile}, nil
+}
+
+func (c *Client) GetNamespaces() ([]string, error) {
+	namespaces, err := c.clientset.CoreV1().Namespaces().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var namespaceList []string
+	for _, ns := range namespaces.Items {
+		namespaceList = append(namespaceList, ns.Name)
+	}
+
+	return namespaceList, nil
+}
+
+func (c *Client) GetPodsWithContext(ctx context.Context, namespace string) ([]string, error) {
+	c.debugLog.Printf("Fetching pods for namespace: %s", namespace)
+	pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		c.debugLog.Printf("Error fetching pods for namespace %s: %v", namespace, err)
+		return nil, err
+	}
+
+	var podList []string
+	for _, pod := range pods.Items {
+		c.debugLog.Printf("Error fetching pods for namespace %s: %v", namespace, err)
+		podList = append(podList, pod.Name)
+	}
+	return podList, nil
+}
+
+func (c *Client) GetContainers(namespace, pod string) ([]string, error) {
+	podInfo, err := c.clientset.CoreV1().Pods(namespace).Get(context.TODO(), pod, metav1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var containers []string
+	for _, container := range podInfo.Spec.Containers {
+		containers = append(containers, container.Name)
+	}
+
+	return containers, nil
+}
+
+func (c *Client) GetPods(namespace string) ([]string, error) {
+	pods, err := c.clientset.CoreV1().Pods(namespace).List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var podList []string
+	for _, pod := range pods.Items {
+		podList = append(podList, pod.Name)
+	}
+
+	return podList, nil
+}
+
+func (c *Client) GetLogs(namespace, pod, container string) (string, error) {
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(pod, &corev1.PodLogOptions{
+		Container: container,
+		Follow:    false,
+	})
+
+	podLogs, err := req.Stream(context.TODO())
+	if err != nil {
+		return "", err
+	}
+	defer podLogs.Close()
+
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, podLogs)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+func (c *Client) GetLogsSince(namespace, pod, container string, since time.Time) (string, error) {
+	sinceSeconds := int64(time.Since(since).Seconds())
+
+	opts := &corev1.PodLogOptions{
+		Container:    container,
+		SinceSeconds: &sinceSeconds,
+	}
+
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(pod, opts)
+	podLogs, err := req.Stream(context.Background())
+	if err != nil {
+		return "", err
+	}
+	defer podLogs.Close()
+
+	buf := new(bytes.Buffer)
+	_, err = io.Copy(buf, podLogs)
+	if err != nil {
+		return "", err
+	}
+
+	return buf.String(), nil
+}
+
+func (c *Client) StreamAllLogs(ctx context.Context, logChan chan<- LogEntry) error {
+	namespaces, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fmt.Errorf("error fetching namespaces: %v", err)
+	}
+
+	for _, ns := range namespaces.Items {
+		go c.streamNamespaceLogs(ctx, ns.Name, logChan)
+	}
+
+	<-ctx.Done()
+	return nil
+}
+
+func (c *Client) streamNamespaceLogs(ctx context.Context, namespace string, logChan chan<- LogEntry) {
+	for {
+		pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
+		if err != nil {
+			fmt.Printf("Error fetching pods for namespace %s: %v\n", namespace, err)
+			return
+		}
+
+		for _, pod := range pods.Items {
+			for _, container := range pod.Spec.Containers {
+				go c.streamContainerLogs(ctx, namespace, pod.Name, container.Name, logChan)
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second): // check for new pods every 30 seconds
+		}
+	}
+}
+
+func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, container string, logChan chan<- LogEntry) {
+	for {
+		req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
+			Container: container,
+			Follow:    true,
+		})
+
+		stream, err := req.Stream(ctx)
+		if err != nil {
+			fmt.Printf("Error streaming logs for pod %s/%s: %v\n", namespace, podName, err)
+			return
+		}
+
+		reader := bufio.NewReader(stream)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				break
+			}
+
+			var logEntry LogEntry
+			if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
+				// If it's not JSON, create a basic log entry
+				logEntry = LogEntry{
+					Timestamp: time.Now(),
+					Namespace: namespace,
+					Pod:       podName,
+					Container: container,
+					Message:   line,
+					Level:     "INFO", // default to INFO
+				}
+			}
+
+			select {
+			case logChan <- logEntry:
+			case <-ctx.Done():
+				stream.Close()
+				return
+			}
+		}
+
+		stream.Close()
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(5 * time.Second): // wait before retrying the stream
+		}
+	}
+}
+
+func (c *Client) GetRecentLogs() ([]string, error) {
+	pods, err := c.clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	var allLogs []string
+	for _, pod := range pods.Items {
+		req := c.clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
+			TailLines: int64Ptr(10), // Fetch last 10 lines
+		})
+		podLogs, err := req.Stream(context.TODO())
+		if err != nil {
+			continue // Skip this pod if there's an error
+		}
+		defer podLogs.Close()
+
+		buf := new(bytes.Buffer)
+		_, err = io.Copy(buf, podLogs)
+		if err != nil {
+			continue
+		}
+
+		logs := strings.Split(buf.String(), "\n")
+		for _, log := range logs {
+			if log != "" {
+				allLogs = append(allLogs, fmt.Sprintf("[%s/%s] %s", pod.Namespace, pod.Name, log))
+			}
+		}
+	}
+
+	return allLogs, nil
+}
+
+func int64Ptr(i int64) *int64 {
+	return &i
+}
