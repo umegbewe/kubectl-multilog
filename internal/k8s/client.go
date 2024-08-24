@@ -161,31 +161,31 @@ func (c *Client) GetLogsSince(namespace, pod, container string, since time.Time)
 	return buf.String(), nil
 }
 
-func (c *Client) StreamAllLogs(ctx context.Context, logChan chan<- LogEntry) error {
+func (c *Client) StreamAllLogs(ctx context.Context, logChan chan<- LogEntry, startTime time.Time) error {
 	namespaces, err := c.clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("error fetching namespaces: %v", err)
 	}
 
 	for _, ns := range namespaces.Items {
-		go c.streamNamespaceLogs(ctx, ns.Name, logChan)
+		go c.streamNamespaceLogs(ctx, ns.Name, logChan, startTime)
 	}
 
 	<-ctx.Done()
 	return nil
 }
 
-func (c *Client) streamNamespaceLogs(ctx context.Context, namespace string, logChan chan<- LogEntry) {
+func (c *Client) streamNamespaceLogs(ctx context.Context, namespace string, logChan chan<- LogEntry, startTime time.Time) {
 	for {
 		pods, err := c.clientset.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{})
 		if err != nil {
-			fmt.Printf("Error fetching pods for namespace %s: %v\n", namespace, err)
+			// fmt.Printf("Error fetching pods for namespace %s: %v\n", namespace, err) // revisit
 			return
 		}
 
 		for _, pod := range pods.Items {
 			for _, container := range pod.Spec.Containers {
-				go c.streamContainerLogs(ctx, namespace, pod.Name, container.Name, logChan)
+				go c.streamContainerLogs(ctx, namespace, pod.Name, container.Name, logChan, startTime)
 			}
 		}
 		select {
@@ -196,16 +196,18 @@ func (c *Client) streamNamespaceLogs(ctx context.Context, namespace string, logC
 	}
 }
 
-func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, container string, logChan chan<- LogEntry) {
+func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, container string, logChan chan<- LogEntry, startTime time.Time) {
 	for {
+		sinceSeconds := int64(time.Since(startTime).Seconds())
 		req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
 			Container: container,
 			Follow:    true,
+			SinceSeconds: &sinceSeconds,
 		})
 
 		stream, err := req.Stream(ctx)
 		if err != nil {
-			fmt.Printf("Error streaming logs for pod %s/%s: %v\n", namespace, podName, err)
+			// fmt.Printf("Error opening stream for %s/%s/%s: %v\n", namespace, podName, container, err) // revisit
 			return
 		}
 
@@ -225,7 +227,6 @@ func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, co
 					Pod:       podName,
 					Container: container,
 					Message:   line,
-					Level:     "INFO", // default to INFO
 				}
 			}
 

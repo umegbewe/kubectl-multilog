@@ -28,6 +28,7 @@ type LogExplorerTUI struct {
 	liveTrailCancel   context.CancelFunc
 	logChan           chan k8s.LogEntry
 	logMutex          sync.Mutex
+	liveTailStartTime time.Time
 }
 
 func NewLogExplorerTUI() (*LogExplorerTUI, error) {
@@ -239,14 +240,15 @@ func (t *LogExplorerTUI) startLiveTrail() {
 	t.LogView.Clear()
 	t.StatusBar.SetText("Live trail active")
 
+
+	t.liveTailStartTime = time.Now()
 	t.liveTrailCtx, t.liveTrailCancel = context.WithCancel(context.Background())
 	t.logChan = make(chan k8s.LogEntry, 100)
 
-	go t.K8sClient.StreamAllLogs(t.liveTrailCtx, t.logChan)
+	go t.K8sClient.StreamAllLogs(t.liveTrailCtx, t.logChan, t.liveTailStartTime)
 	go t.processLiveLogs()
 }
 
-// Add this method to stop the live trail
 func (t *LogExplorerTUI) stopLiveTrail() {
 	t.isLiveTrailActive = false
 	t.liveTrailButton.SetLabel("Start Live Trail")
@@ -261,6 +263,7 @@ func (t *LogExplorerTUI) processLiveLogs() {
 			t.logMutex.Lock()
 			defer t.logMutex.Unlock()
 
+			if logEntry.Timestamp.After(t.liveTailStartTime) {
 			formattedLog := fmt.Sprintf("[%s] [%s/%s/%s] %s: %s\n",
 				logEntry.Timestamp.Format(time.RFC3339),
 				logEntry.Namespace,
@@ -271,7 +274,8 @@ func (t *LogExplorerTUI) processLiveLogs() {
 
 			t.LogView.ScrollToEnd()
 			fmt.Fprintf(t.LogView, "%s", formattedLog)
-		})
+			}
+		})	
 	}
 }
 
