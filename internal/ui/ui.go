@@ -13,13 +13,14 @@ import (
 )
 
 type LogExplorerTUI struct {
-	App         *tview.Application
-	Layout      *tview.Flex
-	hierarchy   *tview.TreeView
-	logView     *tview.TextView
-	searchInput *tview.InputField
-	filterInput *tview.InputField
-	statusBar   *tview.TextView
+	App             *tview.Application
+	layout          *tview.Flex
+	hierarchy       *tview.TreeView
+	logView         *tview.TextView
+	searchInput     *tview.InputField
+	filterInput     *tview.InputField
+	statusBar       *tview.TextView
+	clusterDropdown *tview.DropDown
 
 	k8sClient         *k8s.Client
 	liveTailButton    *tview.Button
@@ -43,10 +44,12 @@ func NewLogExplorerTUI() (*LogExplorerTUI, error) {
 		return nil, fmt.Errorf("failed to create Kubernetes client: %v", err)
 	}
 
+	root := tview.NewTreeNode("Namespaces:").SetColor(textColor).SetSelectable(false)
+
 	tui := &LogExplorerTUI{
 		App:         tview.NewApplication(),
-		Layout:      tview.NewFlex(),
-		hierarchy:   tview.NewTreeView().SetGraphics(false),
+		layout:      tview.NewFlex(),
+		hierarchy:   tview.NewTreeView().SetGraphics(false).SetRoot(root),
 		logView:     tview.NewTextView(),
 		searchInput: tview.NewInputField().SetLabel("Search: "),
 		filterInput: tview.NewInputField().SetLabel("Filter: "),
@@ -59,11 +62,23 @@ func NewLogExplorerTUI() (*LogExplorerTUI, error) {
 }
 
 func (t *LogExplorerTUI) setupUI() {
-	root := tview.NewTreeNode("Kubernetes").SetColor(textColor)
-	t.hierarchy.SetRoot(root).SetCurrentNode(root)
+	clusters := t.k8sClient.GetClusterNames()
+
+	t.clusterDropdown = tview.NewDropDown().
+		SetLabel("Cluster: ").
+		SetOptions(clusters, func(option string, index int) {
+			if err := t.k8sClient.SwitchCluster(option); err != nil {
+				t.statusBar.SetText(fmt.Sprintf("Error switching cluster: %v", err))
+				return
+			}
+			t.statusBar.SetText(fmt.Sprintf("Switched to cluster: %s", option))
+			t.hierarchy.GetRoot().ClearChildren()
+			t.loadNamespaces(t.hierarchy.GetRoot())
+		})
+	t.clusterDropdown.SetCurrentOption(0)
+	
 	t.hierarchy.SetBackgroundColor(sidebarColor)
 	t.statusBar.SetBackgroundColor(backgroundColor)
-	t.loadNamespaces(root)
 
 	t.logView = tview.NewTextView().
 		SetDynamicColors(true).
@@ -79,6 +94,7 @@ func (t *LogExplorerTUI) setupUI() {
 		SetSelectedFunc(t.toggleLiveTail)
 
 	topBar := tview.NewFlex().
+		AddItem(t.clusterDropdown, 0, 1, false).
 		AddItem(t.searchInput, 0, 1, false).
 		AddItem(t.filterInput, 0, 1, false).
 		AddItem(t.liveTailButton, 0, 1, false)
@@ -87,7 +103,7 @@ func (t *LogExplorerTUI) setupUI() {
 		AddItem(t.hierarchy, 0, 1, true).
 		AddItem(t.logView, 0, 5, false)
 
-	t.Layout.SetDirection(tview.FlexRow).
+	t.layout.SetDirection(tview.FlexRow).
 		AddItem(topBar, 1, 0, false).
 		AddItem(mainArea, 0, 1, true).
 		AddItem(t.statusBar, 1, 0, false)
@@ -152,7 +168,7 @@ func (t *LogExplorerTUI) loadContainers(podNode *tview.TreeNode, namespace, pod 
 	t.App.QueueUpdateDraw(func() {
 		podNode.ClearChildren() // Clear existing children to avoid duplicates
 		for _, container := range containers {
-			containerNode := tview.NewTreeNode(container).SetColor(tcell.ColorRed).SetReference(container)
+			containerNode := tview.NewTreeNode(container).SetColor(textColor).SetReference(container)
 			containerNode.SetSelectedFunc(func() {
 				go t.loadLogs(namespace, pod, container)
 			})
@@ -323,5 +339,5 @@ func (t *LogExplorerTUI) Run() error {
 		return event
 	})
 
-	return t.App.SetRoot(t.Layout, true).EnableMouse(true).Run()
+	return t.App.SetRoot(t.layout, true).EnableMouse(true).Run()
 }
