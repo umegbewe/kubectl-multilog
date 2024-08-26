@@ -15,21 +15,27 @@ import (
 type LogExplorerTUI struct {
 	App         *tview.Application
 	Layout      *tview.Flex
-	Hierarchy   *tview.TreeView
-	LogView     *tview.TextView
-	SearchInput *tview.InputField
-	FilterInput *tview.InputField
-	StatusBar   *tview.TextView
+	hierarchy   *tview.TreeView
+	logView     *tview.TextView
+	searchInput *tview.InputField
+	filterInput *tview.InputField
+	statusBar   *tview.TextView
 
-	K8sClient         *k8s.Client
-	liveTrailButton   *tview.Button
-	isLiveTrailActive bool
-	liveTrailCtx      context.Context
-	liveTrailCancel   context.CancelFunc
+	k8sClient         *k8s.Client
+	liveTailButton    *tview.Button
+	isLiveTailActive  bool
+	liveTailCtx       context.Context
+	liveTailCancel    context.CancelFunc
 	logChan           chan k8s.LogEntry
 	logMutex          sync.Mutex
 	liveTailStartTime time.Time
 }
+
+var (
+	textColor       = tcell.NewHexColor(0x569cdb)
+	backgroundColor = tcell.ColorDefault
+	sidebarColor    = tcell.NewRGBColor(51, 51, 51)
+)
 
 func NewLogExplorerTUI() (*LogExplorerTUI, error) {
 	client, err := k8s.NewClient()
@@ -40,12 +46,12 @@ func NewLogExplorerTUI() (*LogExplorerTUI, error) {
 	tui := &LogExplorerTUI{
 		App:         tview.NewApplication(),
 		Layout:      tview.NewFlex(),
-		Hierarchy:   tview.NewTreeView(),
-		LogView:     tview.NewTextView().SetDynamicColors(true),
-		SearchInput: tview.NewInputField().SetLabel("Search: "),
-		FilterInput: tview.NewInputField().SetLabel("Filter: "),
-		StatusBar:   tview.NewTextView().SetTextAlign(tview.AlignLeft),
-		K8sClient:   client,
+		hierarchy:   tview.NewTreeView().SetGraphics(false),
+		logView:     tview.NewTextView(),
+		searchInput: tview.NewInputField().SetLabel("Search: "),
+		filterInput: tview.NewInputField().SetLabel("Filter: "),
+		statusBar:   tview.NewTextView().SetTextAlign(tview.AlignLeft),
+		k8sClient:   client,
 	}
 
 	tui.setupUI()
@@ -53,51 +59,52 @@ func NewLogExplorerTUI() (*LogExplorerTUI, error) {
 }
 
 func (t *LogExplorerTUI) setupUI() {
-	// Setup Hierarchy
-	root := tview.NewTreeNode("Kubernetes").SetColor(tcell.ColorYellow)
-	t.Hierarchy.SetRoot(root).SetCurrentNode(root)
+	root := tview.NewTreeNode("Kubernetes").SetColor(textColor)
+	t.hierarchy.SetRoot(root).SetCurrentNode(root)
+	t.hierarchy.SetBackgroundColor(sidebarColor)
+	t.statusBar.SetBackgroundColor(backgroundColor)
 	t.loadNamespaces(root)
 
-	// Setup LogView
-	t.LogView = tview.NewTextView().
+	t.logView = tview.NewTextView().
 		SetDynamicColors(true).
+		SetRegions(true).
 		SetScrollable(true).
 		SetWordWrap(true)
-	t.LogView.SetBorder(true).SetTitle("Logs")
 
-	t.liveTrailButton = tview.NewButton("Start Live Trail").
-		SetSelectedFunc(t.toggleLiveTrail)
+	t.logView.SetTitle("Logs")
+	t.logView.SetBackgroundColor(backgroundColor)
+	t.logView.SetBorder(true)
 
-	// Setup top bar
+	t.liveTailButton = tview.NewButton("Start Live Tail").
+		SetSelectedFunc(t.toggleLiveTail)
+
 	topBar := tview.NewFlex().
-		AddItem(t.SearchInput, 0, 1, false).
-		AddItem(t.FilterInput, 0, 1, false).
-		AddItem(t.liveTrailButton, 0, 1, false)
+		AddItem(t.searchInput, 0, 1, false).
+		AddItem(t.filterInput, 0, 1, false).
+		AddItem(t.liveTailButton, 0, 1, false)
 
 	mainArea := tview.NewFlex().
-		AddItem(t.Hierarchy, 0, 1, true).
-		AddItem(t.LogView, 0, 3, false)
+		AddItem(t.hierarchy, 0, 1, true).
+		AddItem(t.logView, 0, 5, false)
 
-	// Main layout
 	t.Layout.SetDirection(tview.FlexRow).
 		AddItem(topBar, 1, 0, false).
 		AddItem(mainArea, 0, 1, true).
-		AddItem(t.StatusBar, 1, 0, false)
+		AddItem(t.statusBar, 1, 0, false)
 
-	// Setup handlers
 	t.setupHandlers()
 }
 
 func (t *LogExplorerTUI) loadNamespaces(root *tview.TreeNode) {
-	namespaces, err := t.K8sClient.GetNamespaces()
+	namespaces, err := t.k8sClient.GetNamespaces()
 	if err != nil {
-		t.StatusBar.SetText(fmt.Sprintf("Error fetching namespaces: %v", err))
+		t.statusBar.SetText(fmt.Sprintf("Error fetching namespaces: %v", err))
 		return
 	}
 
 	for _, ns := range namespaces {
-		nsNode := tview.NewTreeNode(ns).SetColor(tcell.ColorGreen).SetReference(ns)
-		nsNode.SetSelectedFunc(func() {
+		nsNode := createTreeNode(ns, false).SetReference(ns)
+		setNodeWithToggleIcon(nsNode, ns, func() {
 			nsNode.ClearChildren()
 			go t.loadPods(nsNode)
 		})
@@ -108,10 +115,10 @@ func (t *LogExplorerTUI) loadNamespaces(root *tview.TreeNode) {
 func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
 	namespace := nsNode.GetReference().(string)
 	t.showLoading(fmt.Sprintf("Fetching pods for %s", namespace))
-	pods, err := t.K8sClient.GetPods(namespace)
+	pods, err := t.k8sClient.GetPods(namespace)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
-			t.StatusBar.SetText(fmt.Sprintf("Error fetching pods for %s: %v", namespace, err))
+			t.statusBar.SetText(fmt.Sprintf("Error fetching pods for %s: %v", namespace, err))
 		})
 		return
 	}
@@ -119,24 +126,25 @@ func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
 	t.App.QueueUpdateDraw(func() {
 		nsNode.ClearChildren()
 		for _, pod := range pods {
-			podNode := tview.NewTreeNode(pod).SetColor(tcell.ColorBlue).SetReference(pod)
-			podNode.SetSelectedFunc(func() {
+			podNode := createTreeNode(pod, false).SetReference(pod)
+			setNodeWithToggleIcon(podNode, pod, func() {
+				podNode.ClearChildren()
 				// Use a closure to capture the correct pod name
 				podName := podNode.GetReference().(string)
 				go t.loadContainers(podNode, namespace, podName)
 			})
 			nsNode.AddChild(podNode)
 		}
-		t.StatusBar.SetText(fmt.Sprintf("Loaded %d pods in namespace %s", len(pods), namespace))
+		t.statusBar.SetText(fmt.Sprintf("Loaded %d pods in namespace %s", len(pods), namespace))
 	})
 }
 
 func (t *LogExplorerTUI) loadContainers(podNode *tview.TreeNode, namespace, pod string) {
 	t.showLoading(fmt.Sprintf("Fetching containers for %s/%s", namespace, pod))
-	containers, err := t.K8sClient.GetContainers(namespace, pod)
+	containers, err := t.k8sClient.GetContainers(namespace, pod)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
-			t.StatusBar.SetText(fmt.Sprintf("Error fetching containers for %s/%s: %v", namespace, pod, err))
+			t.statusBar.SetText(fmt.Sprintf("Error fetching containers for %s/%s: %v", namespace, pod, err))
 		})
 		return
 	}
@@ -150,7 +158,7 @@ func (t *LogExplorerTUI) loadContainers(podNode *tview.TreeNode, namespace, pod 
 			})
 			podNode.AddChild(containerNode)
 		}
-		t.StatusBar.SetText(fmt.Sprintf("Loaded %d containers for %s/%s", len(containers), namespace, pod))
+		t.statusBar.SetText(fmt.Sprintf("Loaded %d containers for %s/%s", len(containers), namespace, pod))
 	})
 }
 
@@ -158,30 +166,30 @@ func (t *LogExplorerTUI) loadLogs(namespace, pod, container string) {
 
 	t.showLoading(fmt.Sprintf("Loading logs for %s/%s/%s", namespace, pod, container))
 
-	logs, err := t.K8sClient.GetLogs(namespace, pod, container)
+	logs, err := t.k8sClient.GetLogs(namespace, pod, container)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
-			t.StatusBar.SetText(fmt.Sprintf("Error fetching logs: %v", err))
+			t.statusBar.SetText(fmt.Sprintf("Error fetching logs: %v", err))
 		})
 		return
 	}
 
 	t.App.QueueUpdateDraw(func() {
-		t.LogView.Clear()
+		t.logView.Clear()
 		formattedLogs := t.FormatLogs(logs)
-		t.LogView.SetText(formattedLogs)
-		t.LogView.ScrollToBeginning()
-		t.StatusBar.SetText(fmt.Sprintf("Logs loaded for %s/%s/%s", namespace, pod, container))
+		t.logView.SetText(formattedLogs)
+		t.logView.ScrollToBeginning()
+		t.statusBar.SetText(fmt.Sprintf("Logs loaded for %s/%s/%s", namespace, pod, container))
 	})
 }
 
 func (t *LogExplorerTUI) setupHandlers() {
-	t.SearchInput.SetDoneFunc(func(key tcell.Key) {
-		t.searchLogs(t.SearchInput.GetText())
+	t.searchInput.SetDoneFunc(func(key tcell.Key) {
+		t.searchLogs(t.searchInput.GetText())
 	})
 
-	t.FilterInput.SetDoneFunc(func(key tcell.Key) {
-		t.filterLogs(t.FilterInput.GetText())
+	t.filterInput.SetDoneFunc(func(key tcell.Key) {
+		t.filterLogs(t.filterInput.GetText())
 	})
 }
 
@@ -190,7 +198,7 @@ func (t *LogExplorerTUI) searchLogs(term string) {
 		return
 	}
 
-	content := t.LogView.GetText(false)
+	content := t.logView.GetText(false)
 	lines := strings.Split(content, "\n")
 	var results []string
 
@@ -200,61 +208,85 @@ func (t *LogExplorerTUI) searchLogs(term string) {
 		}
 	}
 
-	t.LogView.Clear()
-	t.LogView.SetText(strings.Join(results, "\n"))
-	t.StatusBar.SetText(fmt.Sprintf("Found %d matches for '%s'", len(results), term))
+	t.logView.Clear()
+	t.logView.SetText(strings.Join(results, "\n"))
+	t.statusBar.SetText(fmt.Sprintf("Found %d matches for '%s'", len(results), term))
 }
 
 func (t *LogExplorerTUI) filterLogs(filter string) {
 	// TODO: Implement filtering
-	t.StatusBar.SetText(fmt.Sprintf("Filtering logs with: %s", filter))
+	t.statusBar.SetText(fmt.Sprintf("Filtering logs with: %s", filter))
 }
 
 func (t *LogExplorerTUI) showLoading(message string) {
 	t.App.QueueUpdateDraw(func() {
-		t.StatusBar.SetText(message + " Loading...")
+		t.statusBar.SetText(message + " Loading...")
 	})
 
 	go func() {
 		for i := 0; i < 3; i++ {
 			time.Sleep(500 * time.Millisecond)
 			t.App.QueueUpdateDraw(func() {
-				currentText := t.StatusBar.GetText(false)
-				t.StatusBar.SetText(currentText + ".")
+				currentText := t.statusBar.GetText(false)
+				t.statusBar.SetText(currentText + ".")
 			})
 		}
 	}()
 }
+func createTreeNode(label string, isLeaf bool) *tview.TreeNode {
+	node := tview.NewTreeNode("")
 
-func (t *LogExplorerTUI) toggleLiveTrail() {
-	if t.isLiveTrailActive {
-		t.stopLiveTrail()
+	if isLeaf {
+		node.SetText(fmt.Sprintf("  %s", label)) // Leaf nodes don't get icons
 	} else {
-		t.startLiveTrail()
+		node.SetText(fmt.Sprintf("▶ %s", label))
+		node.SetExpanded(false) // Initially collapsed
+	}
+
+	return node
+}
+
+func setNodeWithToggleIcon(node *tview.TreeNode, label string, toggleFunc func()) {
+	node.SetSelectedFunc(func() {
+		if node.IsExpanded() {
+			node.CollapseAll()
+			node.SetText(fmt.Sprintf("▶ %s", label))
+		} else {
+			node.ExpandAll()
+			node.SetText(fmt.Sprintf("▼ %s", label))
+		}
+		toggleFunc()
+	})
+}
+
+func (t *LogExplorerTUI) toggleLiveTail() {
+	if t.isLiveTailActive {
+		t.stopLiveTail()
+	} else {
+		t.startLiveTail()
 	}
 }
 
-func (t *LogExplorerTUI) startLiveTrail() {
-	t.isLiveTrailActive = true
-	t.liveTrailButton.SetLabel("Stop Live Trail")
-	t.LogView.Clear()
-	t.StatusBar.SetText("Live trail active")
-
+func (t *LogExplorerTUI) startLiveTail() {
+	t.isLiveTailActive = true
+	t.liveTailButton.SetLabel("Stop Live Tail")
+	t.logView.Clear()
+	t.statusBar.SetText("Live tail active")
 
 	t.liveTailStartTime = time.Now()
-	t.liveTrailCtx, t.liveTrailCancel = context.WithCancel(context.Background())
+	t.liveTailCtx, t.liveTailCancel = context.WithCancel(context.Background())
 	t.logChan = make(chan k8s.LogEntry, 100)
 
-	go t.K8sClient.StreamAllLogs(t.liveTrailCtx, t.logChan, t.liveTailStartTime)
+	go t.k8sClient.StreamAllLogs(t.liveTailCtx, t.logChan, t.liveTailStartTime)
 	go t.processLiveLogs()
 }
 
-func (t *LogExplorerTUI) stopLiveTrail() {
-	t.isLiveTrailActive = false
-	t.liveTrailButton.SetLabel("Start Live Trail")
-	t.liveTrailCancel()
+func (t *LogExplorerTUI) stopLiveTail() {
+	t.isLiveTailActive = false
+	t.liveTailButton.SetLabel("Start Live Tail")
+	t.liveTailCancel()
 	close(t.logChan)
-	t.StatusBar.SetText("Live trail stopped")
+	t.statusBar.SetText("Live tail stopped")
 }
 
 func (t *LogExplorerTUI) processLiveLogs() {
@@ -264,26 +296,26 @@ func (t *LogExplorerTUI) processLiveLogs() {
 			defer t.logMutex.Unlock()
 
 			if logEntry.Timestamp.After(t.liveTailStartTime) {
-			formattedLog := fmt.Sprintf("[%s] [%s/%s/%s] %s: %s\n",
-				logEntry.Timestamp.Format(time.RFC3339),
-				logEntry.Namespace,
-				logEntry.Pod,
-				logEntry.Container,
-				logEntry.Level,
-				logEntry.Message)
+				formattedLog := fmt.Sprintf("[%s] [%s/%s/%s] %s: %s\n",
+					logEntry.Timestamp.Format(time.RFC3339),
+					logEntry.Namespace,
+					logEntry.Pod,
+					logEntry.Container,
+					logEntry.Level,
+					logEntry.Message)
 
-			t.LogView.ScrollToEnd()
-			fmt.Fprintf(t.LogView, "%s", formattedLog)
+				t.logView.ScrollToEnd()
+				fmt.Fprintf(t.logView, "%s", formattedLog)
 			}
-		})	
+		})
 	}
 }
 
 func (t *LogExplorerTUI) Run() error {
 	t.App.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC || event.Rune() == 'q' {
-			if t.isLiveTrailActive{
-				t.stopLiveTrail()
+			if t.isLiveTailActive {
+				t.stopLiveTail()
 			}
 			t.App.Stop()
 			return nil
