@@ -50,6 +50,8 @@ func NewLogExplorerTUI() (*LogExplorerTUI, error) {
 	if err := tui.setupUI(); err != nil {
 		return nil, fmt.Errorf("failed to setup UI: %v", err)
 	}
+
+	tui.refreshHierarchy()
 	return tui, nil
 }
 
@@ -76,6 +78,15 @@ func (t *LogExplorerTUI) setupUI() error {
 		AddItem(t.statusBar, 1, 0, false)
 
 	t.setupHandlers()
+
+	initialCluster := t.k8sClient.GetCurrentContext()
+    for i, cluster := range clusters {
+        if cluster == initialCluster {
+            t.clusterDropdown.SetCurrentOption(i)
+            break
+        }
+    }
+	
 	return nil
 }
 

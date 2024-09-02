@@ -91,6 +91,10 @@ func (c *Client) GetClusterNames() []string {
 	return clusters
 }
 
+func (c *Client) GetCurrentContext() string {
+    return c.config.CurrentContext
+}
+
 func (c *Client) SwitchCluster(contextName string) error {
 	if _, exists := c.config.Contexts[contextName]; !exists {
 		return fmt.Errorf("context %s does not exist", contextName)
