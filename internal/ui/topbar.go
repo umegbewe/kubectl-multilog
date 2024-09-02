@@ -9,10 +9,6 @@ import (
 
 func (t *LogExplorerTUI) createClusterDropdown(clusters []string) *tview.DropDown {
 	return tview.NewDropDown().
-		SetLabel("Cluster: ").
-		SetLabelColor(colors.Accent).
-		SetFieldBackgroundColor(colors.Sidebar).
-		SetFieldTextColor(colors.Highlight).
 		SetOptions(clusters, func(option string, index int) {
 			if err := t.k8sClient.SwitchCluster(option); err != nil {
 				t.setStatusError(fmt.Sprintf("Error switching cluster: %v", err))
@@ -26,23 +22,40 @@ func (t *LogExplorerTUI) createClusterDropdown(clusters []string) *tview.DropDow
 }
 
 func (t *LogExplorerTUI) createTopBar() *tview.Flex {
-	startLiveTailBtn := tview.NewButton("Start Live Tail").
-		SetSelectedFunc(t.toggleLiveTail).
-		SetLabelColor(colors.Accent).
-		SetBackgroundColor(colors.Sidebar)
+	topBar := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	stopLiveTailBtn := tview.NewButton("Stop Live Tail").
-		SetSelectedFunc(t.toggleLiveTail).
-		SetLabelColor(colors.Accent).
-		SetBackgroundColor(colors.Sidebar)
+	t.clusterDropdown.SetLabel("Cluster: ")
+	t.clusterDropdown.SetLabelColor(colors.Accent)
+	t.clusterDropdown.SetFieldTextColor(colors.Text)
+	t.clusterDropdown.SetBackgroundColor(colors.TopBar)
+	t.clusterDropdown.SetListStyles(tcell.StyleDefault.Background(colors.Sidebar), tcell.StyleDefault.Background(colors.Highlight).Foreground(colors.Text))
 
-	return tview.NewFlex().
-		SetDirection(tview.FlexColumn).
-		AddItem(tview.NewBox().SetBorder(false).SetBackgroundColor(colors.TopBar), 1, 0, false).
-		AddItem(tview.NewBox().SetBorder(true).SetBorderColor(tcell.ColorGray).SetBackgroundColor(colors.TopBar), 1, 0, false).
-		AddItem(t.clusterDropdown, 0, 2, false).
-		AddItem(t.searchInput.SetFieldBackgroundColor(colors.TopBar).SetFieldTextColor(tcell.ColorWhite), 0, 1, false).
-		AddItem(t.filterInput.SetFieldBackgroundColor(colors.TopBar).SetFieldTextColor(tcell.ColorWhite), 0, 1, false).
-		AddItem(startLiveTailBtn, 0, 1, false).
-		AddItem(stopLiveTailBtn, 0, 1, false)
+	t.searchInput.SetLabel("Search: ")
+	t.searchInput.SetLabelColor(colors.Accent)
+	t.searchInput.SetFieldBackgroundColor(colors.TopBar)
+	t.searchInput.SetFieldTextColor(colors.Text)
+
+	t.filterInput.SetLabel("Filter: ")
+    t.filterInput.SetLabelColor(colors.Accent)
+    t.filterInput.SetFieldBackgroundColor(colors.TopBar)
+    t.filterInput.SetFieldTextColor(colors.Text)
+
+	t.liveTailBtn = tview.NewButton("Start Live Tail")
+	t.liveTailBtn.SetLabelColor(colors.Text)
+	t.liveTailBtn.SetBackgroundColor(colors.TopBar)
+	t.liveTailBtn.SetSelectedFunc(t.toggleLiveTail)
+
+	topBar.AddItem(t.clusterDropdown, 0, 1, false)
+	topBar.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
+	topBar.AddItem(t.searchInput, 0, 1, false)
+	topBar.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
+	topBar.AddItem(t.filterInput, 0, 1, false)
+	topBar.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
+	topBar.AddItem(t.liveTailBtn, 0, 1, false)
+
+	topSection := tview.NewFlex().SetDirection(tview.FlexRow)
+	topSection.AddItem(topBar, 1, 0, false)
+	topSection.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
+
+	return topSection
 }

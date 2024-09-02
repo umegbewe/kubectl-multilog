@@ -71,8 +71,10 @@ func (t *LogExplorerTUI) processLiveLogs() {
 func (t *LogExplorerTUI) toggleLiveTail() {
 	if t.isLiveTailActive {
 		t.stopLiveTail()
+		t.liveTailBtn.SetLabel("Start Live Tail").SetBackgroundColor(colors.TopBar)
 	} else {
 		t.startLiveTail()
+		t.liveTailBtn.SetLabel("Stop Live Tail").SetBackgroundColor(colors.Accent)
 	}
 }
 

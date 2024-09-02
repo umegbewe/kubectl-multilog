@@ -20,7 +20,7 @@ type LogExplorerTUI struct {
 	filterInput     *tview.InputField
 	statusBar       *tview.TextView
 	clusterDropdown *tview.DropDown
-
+	liveTailBtn     *tview.Button
 	k8sClient         *k8s.Client
 	isLiveTailActive  bool
 	liveTailCtx       context.Context
@@ -71,7 +71,7 @@ func (t *LogExplorerTUI) setupUI() error {
 	mainArea := t.createMainArea()
 
 	t.layout.SetDirection(tview.FlexRow).
-		AddItem(topBar, 2, 0, false).
+		AddItem(topBar, 3, 0, false).
 		AddItem(mainArea, 0, 1, true).
 		AddItem(t.statusBar, 1, 0, false)
 
