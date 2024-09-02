@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/homedir"
 )
 
@@ -31,6 +32,7 @@ type LogEntry struct {
 
 type Client struct {
 	clientset *kubernetes.Clientset
+	config    *clientcmdapi.Config
 	debugLog  *log.Logger
 	logFile   *os.File
 }
@@ -44,18 +46,56 @@ func NewClient() (*Client, error) {
 	debugLog := log.New(os.Stderr, "K8S_CLIENT: ", log.Ltime|log.Lshortfile)
 
 	kubeconfig := filepath.Join(homedir.HomeDir(), ".kube", "config")
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	config, err := clientcmd.LoadFromFile(kubeconfig)
 	if err != nil {
 		return nil, err
 	}
 
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := createClientset(config)
 	if err != nil {
-		logFile.Close()
 		return nil, err
 	}
 
-	return &Client{clientset: clientset, debugLog: debugLog, logFile: logFile}, nil
+	return &Client{clientset: clientset, config: config, debugLog: debugLog, logFile: logFile}, nil
+}
+
+func createClientset(config *clientcmdapi.Config) (*kubernetes.Clientset, error) {
+	clientConfig := clientcmd.NewDefaultClientConfig(*config, &clientcmd.ConfigOverrides{})
+	restConfig, err := clientConfig.ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("error creating clientset: %v", err)
+	}
+
+	return clientset, nil
+}
+
+func (c *Client) GetClusterNames() []string {
+	clusters := []string{}
+	for name := range c.config.Contexts {
+		clusters = append(clusters, name)
+	}
+
+	return clusters
+}
+
+func (c *Client) SwitchCluster(contextName string) error {
+	if _, exists := c.config.Contexts[contextName]; !exists {
+		return fmt.Errorf("context %s does not exist", contextName)
+	}
+
+	c.config.CurrentContext = contextName
+
+	clientset, err := createClientset(c.config)
+	if err != nil {
+		return fmt.Errorf("failed to switch cluster: %v", err)
+	}
+	c.clientset = clientset
+	return nil
 }
 
 func (c *Client) GetNamespaces() ([]string, error) {
@@ -200,8 +240,8 @@ func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, co
 	for {
 		sinceSeconds := int64(time.Since(startTime).Seconds())
 		req := c.clientset.CoreV1().Pods(namespace).GetLogs(podName, &corev1.PodLogOptions{
-			Container: container,
-			Follow:    true,
+			Container:    container,
+			Follow:       true,
 			SinceSeconds: &sinceSeconds,
 		})
 
