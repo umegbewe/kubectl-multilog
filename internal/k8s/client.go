@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/util/homedir"
+	"k8s.io/klog/v2"
 )
 
 type LogEntry struct {
@@ -35,6 +36,11 @@ type Client struct {
 	config    *clientcmdapi.Config
 	debugLog  *log.Logger
 	logFile   *os.File
+}
+
+func (c *Client) captureWarnings() {
+	klog.SetOutput(io.Discard)
+	klog.LogToStderr(false)
 }
 
 func NewClient() (*Client, error) {
@@ -56,7 +62,9 @@ func NewClient() (*Client, error) {
 		return nil, err
 	}
 
-	return &Client{clientset: clientset, config: config, debugLog: debugLog, logFile: logFile}, nil
+	client := &Client{clientset: clientset, config: config, debugLog: debugLog, logFile: logFile}
+	client.captureWarnings()
+	return client, nil
 }
 
 func createClientset(config *clientcmdapi.Config) (*kubernetes.Clientset, error) {
@@ -95,6 +103,7 @@ func (c *Client) SwitchCluster(contextName string) error {
 		return fmt.Errorf("failed to switch cluster: %v", err)
 	}
 	c.clientset = clientset
+	c.captureWarnings()
 	return nil
 }
 
