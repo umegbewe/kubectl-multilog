@@ -12,15 +12,16 @@ import (
 )
 
 type LogExplorerTUI struct {
-	App             *tview.Application
-	layout          *tview.Flex
-	hierarchy       *tview.TreeView
-	logView         *tview.TextView
-	searchInput     *tview.InputField
-	filterInput     *tview.InputField
-	statusBar       *tview.TextView
-	clusterDropdown *tview.DropDown
-	liveTailBtn     *tview.Button
+	App               *tview.Application
+	layout            *tview.Flex
+	hierarchy         *tview.TreeView
+	logView           *tview.TextView
+	searchInput       *tview.InputField
+	searchNavButton   *tview.Flex
+	filterInput       *tview.InputField
+	statusBar         *tview.TextView
+	clusterDropdown   *tview.DropDown
+	liveTailBtn       *tview.Button
 	k8sClient         *k8s.Client
 	isLiveTailActive  bool
 	liveTailCtx       context.Context
@@ -80,13 +81,13 @@ func (t *LogExplorerTUI) setupUI() error {
 	t.setupHandlers()
 
 	initialCluster := t.k8sClient.GetCurrentContext()
-    for i, cluster := range clusters {
-        if cluster == initialCluster {
-            t.clusterDropdown.SetCurrentOption(i)
-            break
-        }
-    }
-	
+	for i, cluster := range clusters {
+		if cluster == initialCluster {
+			t.clusterDropdown.SetCurrentOption(i)
+			break
+		}
+	}
+
 	return nil
 }
 
