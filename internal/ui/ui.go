@@ -29,6 +29,7 @@ type LogExplorerTUI struct {
 	logChan           chan k8s.LogEntry
 	logMutex          sync.Mutex
 	liveTailStartTime time.Time
+	logStreamCancel   context.CancelFunc
 }
 
 func NewLogExplorerTUI() (*LogExplorerTUI, error) {

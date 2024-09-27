@@ -169,25 +169,45 @@ func (c *Client) GetPods(namespace string) ([]string, error) {
 	return podList, nil
 }
 
-func (c *Client) GetLogs(namespace, pod, container string) (string, error) {
-	req := c.clientset.CoreV1().Pods(namespace).GetLogs(pod, &corev1.PodLogOptions{
+func (c *Client) GetLogs(namespace, pod, container string, follow bool, tailLines *int64) (string, <-chan string, error) {
+	options := &corev1.PodLogOptions{
 		Container: container,
-		Follow:    false,
-	})
-
-	podLogs, err := req.Stream(context.TODO())
-	if err != nil {
-		return "", err
-	}
-	defer podLogs.Close()
-
-	buf := new(bytes.Buffer)
-	_, err = io.Copy(buf, podLogs)
-	if err != nil {
-		return "", err
+		Follow:    follow,
+		TailLines: tailLines,
 	}
 
-	return buf.String(), nil
+	req := c.clientset.CoreV1().Pods(namespace).GetLogs(pod, options)
+
+	if !follow {
+		podLogs, err := req.DoRaw(context.TODO())
+		return string(podLogs), nil, err
+	}
+
+	stream, err := req.Stream(context.TODO())
+	if err != nil {
+		return "", nil, err
+	}
+
+	logChan := make(chan string)
+
+	go func() {
+		defer stream.Close()
+		defer close(logChan)
+
+		reader := bufio.NewReader(stream)
+		for {
+			line, err := reader.ReadString('\n')
+			if err != nil {
+				if err != io.EOF {
+					c.debugLog.Printf("Error reading log stream: %v", err)
+				}
+				return
+			}
+			logChan <- line
+		}
+	}()
+
+	return "", logChan, nil
 }
 
 func (c *Client) GetLogsSince(namespace, pod, container string, since time.Time) (string, error) {

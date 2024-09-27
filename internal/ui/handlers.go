@@ -12,7 +12,7 @@ import (
 
 var (
 	currentMatchIndex int
-	totalMatches int
+	totalMatches      int
 )
 
 func (t *LogExplorerTUI) setupHandlers() {
@@ -66,7 +66,6 @@ func (t *LogExplorerTUI) searchLogs(term string) {
 	}
 }
 
-
 func (t *LogExplorerTUI) filterLogs(filter string) {
 	// TODO: Implement filtering
 	t.statusBar.SetText(fmt.Sprintf("Filtering logs with: %s", filter))
@@ -78,14 +77,13 @@ func (t *LogExplorerTUI) navigateMatches(direction int) {
 	}
 
 	currentMatchIndex = (currentMatchIndex + direction + totalMatches) % totalMatches
-	
 	content := t.logView.GetText(false)
 	lines := strings.Split(content, "\n")
 
 	for i, line := range lines {
 		if strings.Contains(line, "[#00FF00]") || strings.Contains(line, "[#FFA500]") {
-            lines[i] = strings.ReplaceAll(strings.ReplaceAll(line, "[#00FF00]", "[#00FF00]"), "[#FFA500]", "[#00FF00]")
-        }
+			lines[i] = strings.ReplaceAll(strings.ReplaceAll(line, "[#00FF00]", "[#00FF00]"), "[#FFA500]", "[#00FF00]")
+		}
 	}
 
 	currentLine := lines[currentMatchIndex]
@@ -97,7 +95,6 @@ func (t *LogExplorerTUI) navigateMatches(direction int) {
 	t.logView.Highlight(strconv.Itoa(currentMatchIndex))
 	t.updateNavigationButtons()
 }
-
 
 func (t *LogExplorerTUI) addNavigationButtons() {
 	if t.searchNavButton != nil {

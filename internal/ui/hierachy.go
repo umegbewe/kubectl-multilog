@@ -43,6 +43,7 @@ func (t *LogExplorerTUI) loadNamespaces(root *tview.TreeNode) {
 func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
 	namespace := nsNode.GetReference().(string)
 	t.showLoading(fmt.Sprintf("Fetching pods for %s", namespace))
+	t.clearLogView()
 	pods, err := t.k8sClient.GetPods(namespace)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
@@ -69,6 +70,7 @@ func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
 
 func (t *LogExplorerTUI) loadContainers(podNode *tview.TreeNode, namespace, pod string) {
 	t.showLoading(fmt.Sprintf("Fetching containers for %s/%s", namespace, pod))
+	t.clearLogView()
 	containers, err := t.k8sClient.GetContainers(namespace, pod)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {

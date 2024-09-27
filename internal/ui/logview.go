@@ -26,10 +26,14 @@ func (t *LogExplorerTUI) createLogView() *tview.TextView {
 }
 
 func (t *LogExplorerTUI) loadLogs(namespace, pod, container string) {
+	if t.logStreamCancel != nil {
+		t.logStreamCancel()
+	}
 
 	t.showLoading(fmt.Sprintf("Loading logs for %s/%s/%s", namespace, pod, container))
 
-	logs, err := t.k8sClient.GetLogs(namespace, pod, container)
+	tail := int64(150)
+	logs, logChan, err := t.k8sClient.GetLogs(namespace, pod, container, true, &tail)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
 			t.statusBar.SetText(fmt.Sprintf("Error fetching logs: %v", err))
@@ -39,11 +43,27 @@ func (t *LogExplorerTUI) loadLogs(namespace, pod, container string) {
 
 	t.App.QueueUpdateDraw(func() {
 		t.logView.Clear()
-		formattedLogs := t.FormatLogs(logs)
-		t.logView.SetText(formattedLogs)
-		t.logView.ScrollToBeginning()
-		t.statusBar.SetText(fmt.Sprintf("Logs loaded for %s/%s/%s", namespace, pod, container))
+		t.logView.SetText(logs)
+		t.logView.ScrollToEnd()
+		t.statusBar.SetText(fmt.Sprintf("logs loaded for %s/%s/%s", namespace, pod, container))
 	})
+
+	var ctx context.Context
+	ctx, t.logStreamCancel = context.WithCancel(context.Background())
+
+	for {
+		select {
+		case logEntry, ok := <-logChan:
+			if !ok {
+				return
+			}
+			t.App.QueueUpdateDraw(func() {
+				fmt.Fprintf(t.logView, "%s", logEntry)
+			})
+		case <-ctx.Done():
+			return
+		}
+	}
 }
 
 func (t *LogExplorerTUI) processLiveLogs() {
@@ -61,11 +81,18 @@ func (t *LogExplorerTUI) processLiveLogs() {
 					logEntry.Level,
 					logEntry.Message)
 
-				t.logView.ScrollToEnd()
 				fmt.Fprintf(t.logView, "%s", formattedLog)
+				t.logView.ScrollToEnd()
 			}
 		})
 	}
+}
+
+func (t *LogExplorerTUI) clearLogView() {
+    t.App.QueueUpdateDraw(func() {
+        t.logView.Clear()
+        t.logView.SetText("")
+    })
 }
 
 func (t *LogExplorerTUI) toggleLiveTail() {
