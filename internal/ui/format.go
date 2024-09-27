@@ -15,8 +15,7 @@ func (t *LogExplorerTUI) FormatLogs(logs string) string {
 		"DEBUG": "[blue]",
 	}
 
-	for i := len(logLines) -1; i >=0; i-- {
-		line := logLines[i]
+	for _, line := range logLines {
 		if line == "" {
 			continue
 		}
@@ -30,9 +29,7 @@ func (t *LogExplorerTUI) FormatLogs(logs string) string {
 				break
 			}
 		}
-
-		// Append the (possibly) formatted line to the result
-		formattedLogs = append(formattedLogs, formattedLine)
+		formattedLogs = append([]string{formattedLine}, formattedLogs...)
 	}
 
 	return strings.Join(formattedLogs, "\n")
