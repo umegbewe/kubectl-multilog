@@ -58,7 +58,6 @@ func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
 			podNode := createTreeNode(pod, false).SetReference(pod)
 			setNodeWithToggleIcon(podNode, pod, func() {
 				podNode.ClearChildren()
-				// Use a closure to capture the correct pod name
 				podName := podNode.GetReference().(string)
 				go t.loadContainers(podNode, namespace, podName)
 			})
@@ -80,7 +79,7 @@ func (t *LogExplorerTUI) loadContainers(podNode *tview.TreeNode, namespace, pod 
 	}
 
 	t.App.QueueUpdateDraw(func() {
-		podNode.ClearChildren() // Clear existing children to avoid duplicates
+		podNode.ClearChildren()
 		for _, container := range containers {
 			containerNode := tview.NewTreeNode(container).SetColor(colors.Text).SetReference(container)
 			containerNode.SetSelectedFunc(func() {

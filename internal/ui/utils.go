@@ -34,10 +34,10 @@ func createTreeNode(label string, isLeaf bool) *tview.TreeNode {
 	node := tview.NewTreeNode("")
 
 	if isLeaf {
-		node.SetText(fmt.Sprintf("  %s", label)) // Leaf nodes don't get icons
+		node.SetText(fmt.Sprintf("  %s", label))
 	} else {
 		node.SetText(fmt.Sprintf("▶ %s", label))
-		node.SetExpanded(false) // Initially collapsed
+		node.SetExpanded(false)
 	}
 
 	return node

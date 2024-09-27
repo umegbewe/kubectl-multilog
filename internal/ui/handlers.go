@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -13,11 +14,22 @@ import (
 var (
 	currentMatchIndex int
 	totalMatches      int
+	timer             *time.Timer
 )
 
 func (t *LogExplorerTUI) setupHandlers() {
-	t.searchInput.SetDoneFunc(func(key tcell.Key) {
-		t.searchLogs(t.searchInput.GetText())
+	t.searchInput.SetChangedFunc(func(text string) {
+		if timer != nil {
+			timer.Stop()
+		}
+		timer = time.AfterFunc(200*time.Millisecond, func() {
+			currentText := t.searchInput.GetText()
+			if currentText == "" {
+                t.App.QueueUpdateDraw(t.resetLogs)
+            } else {
+                t.searchLogs(currentText)
+            }
+		})
 	})
 
 	t.filterInput.SetDoneFunc(func(key tcell.Key) {
@@ -57,13 +69,15 @@ func (t *LogExplorerTUI) searchLogs(term string) {
 	totalMatches = len(matchIndices)
 	currentMatchIndex = 0
 
-	t.logView.Clear()
-	t.logView.SetText(strings.Join(highlightedLines, "\n"))
-	t.setStatus(fmt.Sprintf("Found %d matches for '%s'", totalMatches, term))
-	t.addNavigationButtons()
-	if totalMatches > 0 {
-		t.navigateMatches(0) // Highlight the first match
-	}
+	t.App.QueueUpdateDraw(func() {
+        t.logView.Clear()
+        t.logView.SetText(strings.Join(highlightedLines, "\n"))
+        t.setStatus(fmt.Sprintf("Found %d matches for '%s'", totalMatches, term))
+        t.addNavigationButtons()
+        if totalMatches > 0 {
+            t.navigateMatches(0)
+        }
+    })
 }
 
 func (t *LogExplorerTUI) filterLogs(filter string) {
@@ -134,23 +148,21 @@ func (t *LogExplorerTUI) updateNavigationButtons() {
 }
 
 func (t *LogExplorerTUI) resetLogs() {
-	t.App.QueueUpdateDraw(func() {
-		content := t.logView.GetText(false)
-		lines := strings.Split(content, "\n")
+	content := t.logView.GetText(false)
+	lines := strings.Split(content, "\n")
 
-		for i, line := range lines {
-			lines[i] = strings.ReplaceAll(strings.ReplaceAll(line, "[#00FF00]", ""), "[#FFA500]", "")
-		}
+	for i, line := range lines {
+		lines[i] = strings.ReplaceAll(strings.ReplaceAll(line, "[#00FF00]", ""), "[#FFA500]", "")
+	}
 
-		t.logView.Clear()
-		t.logView.SetText(strings.Join(lines, "\n"))
-		t.logView.Highlight()
-		t.setStatus("Search cleared")
-		if t.searchNavButton != nil {
-			t.layout.RemoveItem(t.searchNavButton)
-			t.searchNavButton = nil
-		}
-		totalMatches = 0
-		currentMatchIndex = 0
-	})
+	t.logView.Clear()
+	t.logView.SetText(strings.Join(lines, "\n"))
+	t.logView.Highlight()
+	t.setStatus("Search cleared")
+	if t.searchNavButton != nil {
+		t.layout.RemoveItem(t.searchNavButton)
+		t.searchNavButton = nil
+	}
+	totalMatches = 0
+	currentMatchIndex = 0
 }

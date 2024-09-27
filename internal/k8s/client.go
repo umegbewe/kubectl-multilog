@@ -264,7 +264,7 @@ func (c *Client) streamNamespaceLogs(ctx context.Context, namespace string, logC
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(5 * time.Second): // check for new pods every 30 seconds
+		case <-time.After(5 * time.Second):
 		}
 	}
 }
@@ -293,7 +293,6 @@ func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, co
 
 			var logEntry LogEntry
 			if err := json.Unmarshal([]byte(line), &logEntry); err != nil {
-				// If it's not JSON, create a basic log entry
 				logEntry = LogEntry{
 					Timestamp: time.Now(),
 					Namespace: namespace,
@@ -315,7 +314,7 @@ func (c *Client) streamContainerLogs(ctx context.Context, namespace, podName, co
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(5 * time.Second): // wait before retrying the stream
+		case <-time.After(5 * time.Second):
 		}
 	}
 }
@@ -329,11 +328,11 @@ func (c *Client) GetRecentLogs() ([]string, error) {
 	var allLogs []string
 	for _, pod := range pods.Items {
 		req := c.clientset.CoreV1().Pods(pod.Namespace).GetLogs(pod.Name, &corev1.PodLogOptions{
-			TailLines: int64Ptr(10), // Fetch last 10 lines
+			TailLines: int64Ptr(10),
 		})
 		podLogs, err := req.Stream(context.TODO())
 		if err != nil {
-			continue // Skip this pod if there's an error
+			continue 
 		}
 		defer podLogs.Close()
 
