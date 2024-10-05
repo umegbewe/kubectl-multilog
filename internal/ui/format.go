@@ -4,7 +4,7 @@ import (
 	"strings"
 )
 
-func (t *LogExplorerTUI) FormatLogs(logs string) string {
+func (t *App) FormatLogs(logs string) string {
 	logLines := strings.Split(logs, "\n")
 	formattedLogs := make([]string, 0, len(logLines))
 

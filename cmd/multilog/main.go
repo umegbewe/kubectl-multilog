@@ -6,7 +6,7 @@ import (
 )
 
 func main() {
-	tui, err := ui.NewLogExplorerTUI()
+	tui, err := ui.LogExplorerTUI()
 	if err != nil {
 		log.Fatalf("Failed to create TUI: %v", err)
 	}

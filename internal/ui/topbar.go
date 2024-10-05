@@ -7,7 +7,7 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (t *LogExplorerTUI) createClusterDropdown(clusters []string) *tview.DropDown {
+func (t *App) initClusterDropdown(clusters []string) *tview.DropDown {
 	return tview.NewDropDown().
 		SetOptions(clusters, func(option string, index int) {
 			if err := t.k8sClient.SwitchCluster(option); err != nil {
@@ -21,41 +21,90 @@ func (t *LogExplorerTUI) createClusterDropdown(clusters []string) *tview.DropDow
 		SetFieldWidth(20)
 }
 
-func (t *LogExplorerTUI) createTopBar() *tview.Flex {
+func (t *App) initTopBar() *tview.Flex {
 	topBar := tview.NewFlex().SetDirection(tview.FlexColumn)
 
-	t.clusterDropdown.SetLabel("Cluster: ")
+	t.clusterDropdown.SetLabel("Context: ")
 	t.clusterDropdown.SetLabelColor(colors.Accent)
+	t.clusterDropdown.SetFieldBackgroundColor(colors.TopBar)
 	t.clusterDropdown.SetFieldTextColor(colors.Text)
+	t.clusterDropdown.SetFieldWidth(100)
 	t.clusterDropdown.SetBackgroundColor(colors.TopBar)
-	t.clusterDropdown.SetListStyles(tcell.StyleDefault.Background(colors.Sidebar), tcell.StyleDefault.Background(colors.Highlight).Foreground(colors.Text))
+	t.clusterDropdown.SetListStyles(
+		tcell.StyleDefault.Background(colors.Sidebar), 
+		tcell.StyleDefault.Background(colors.Highlight).Foreground(colors.Text),
+	)
 
-	t.searchInput.SetLabel("Search: ")
-	t.searchInput.SetLabelColor(colors.Accent)
+	t.searchInput.SetLabel(" Search: ").SetLabelColor(colors.Accent)
 	t.searchInput.SetFieldBackgroundColor(colors.TopBar)
+	t.searchInput.SetBackgroundColor(colors.TopBar)
 	t.searchInput.SetFieldTextColor(colors.Text)
 
-	t.filterInput.SetLabel("Filter: ")
-    t.filterInput.SetLabelColor(colors.Accent)
-    t.filterInput.SetFieldBackgroundColor(colors.TopBar)
-    t.filterInput.SetFieldTextColor(colors.Text)
+	t.caseSensitiveBtn = tview.NewButton("Aa").SetSelectedFunc(func() {
+		t.searchOptions.CaseSensitive = !t.searchOptions.CaseSensitive
+		t.performSearch(t.searchInput.GetText())
+	})
+	t.wholeWordBtn = tview.NewButton("W").SetSelectedFunc(func() {
+		t.searchOptions.WholeWord = !t.searchOptions.WholeWord
+		t.performSearch(t.searchInput.GetText())
+	})
+	t.regexBtn = tview.NewButton(".*").SetSelectedFunc(func() {
+		t.searchOptions.RegexEnabled = !t.searchOptions.RegexEnabled
+		t.performSearch(t.searchInput.GetText())
+	})
+	t.prevMatchBtn = tview.NewButton("◀").SetSelectedFunc(func() {
+		t.navigateToMatch(-1)
+	})
+	t.nextMatchBtn = tview.NewButton("▶").SetSelectedFunc(func() {
+		t.navigateToMatch(1)
+	})
+	t.matchCountText = tview.NewTextView().SetTextAlign(tview.AlignRight)
+	t.matchCountText.SetBackgroundColor(colors.TopBar)
+	t.matchCountText.SetTextAlign(tview.AlignCenter)
 
-	t.liveTailBtn = tview.NewButton("Start Live Tail")
-	t.liveTailBtn.SetLabelColor(colors.Text)
-	t.liveTailBtn.SetBackgroundColor(colors.TopBar)
-	t.liveTailBtn.SetSelectedFunc(t.toggleLiveTail)
+	t.liveTailBtn = createButton("Live", colors.Button, t.toggleLiveTail)
 
+	searchBar := tview.NewFlex().
+		AddItem(t.searchInput, 0, 1, false).
+		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
+		AddItem(createButton("Aa", colors.Button,  t.toggleCaseSensitive), 4, 0, false).
+		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
+		AddItem(createButton("W", colors.Button, t.toggleWholeWord), 3, 0, false).
+		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
+		AddItem(createButton(".*", colors.Button, t.toggleRegex), 4, 0, false).
+		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
+		AddItem(createButton("◀", colors.NavButton, func() { t.navigateToMatch(-1) }), 3, 0, false).
+		AddItem(t.matchCountText, 12, 0, false).
+		AddItem(createButton("▶", colors.NavButton, func() { t.navigateToMatch(1) }), 3, 0, false)
+
+	t.setupSearchHandler()
+	
 	topBar.AddItem(t.clusterDropdown, 0, 1, false)
-	topBar.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
-	topBar.AddItem(t.searchInput, 0, 1, false)
-	topBar.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
-	topBar.AddItem(t.filterInput, 0, 1, false)
-	topBar.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
+	topBar.AddItem(searchBar, 0, 3, false)
 	topBar.AddItem(t.liveTailBtn, 0, 1, false)
 
-	topSection := tview.NewFlex().SetDirection(tview.FlexRow)
-	topSection.AddItem(topBar, 1, 0, false)
-	topSection.AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false)
+	return topBar
+}
 
-	return topSection
+
+func createButton(label string, bgColor tcell.Color, selectedFunc func()) *tview.Button {
+	return tview.NewButton(label).
+		SetLabelColor(colors.Text).
+		SetStyle(tcell.StyleDefault.Background(bgColor)).
+		SetSelectedFunc(selectedFunc)
+}
+
+func (t *App) toggleCaseSensitive() {
+	t.searchOptions.CaseSensitive = !t.searchOptions.CaseSensitive
+	t.performSearch(t.searchInput.GetText())
+}
+
+func (t *App) toggleWholeWord() {
+	t.searchOptions.WholeWord = !t.searchOptions.WholeWord
+	t.performSearch(t.searchInput.GetText())
+}
+
+func (t *App) toggleRegex() {
+	t.searchOptions.RegexEnabled = !t.searchOptions.RegexEnabled
+	t.performSearch(t.searchInput.GetText())
 }

@@ -6,13 +6,13 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (t *LogExplorerTUI) createMainArea() *tview.Flex {
+func (t *App) initMainArea() *tview.Flex {
 	return tview.NewFlex().
 		AddItem(t.hierarchy, 0, 1, true).
 		AddItem(t.logView, 0, 5, false)
 }
 
-func (t *LogExplorerTUI) refreshHierarchy() {
+func (t *App) refreshHierarchy() {
 	root := t.hierarchy.GetRoot()
 	if root == nil {
 		t.setStatus("Hierarchy is empty")
@@ -23,7 +23,7 @@ func (t *LogExplorerTUI) refreshHierarchy() {
 	t.loadNamespaces(root)
 }
 
-func (t *LogExplorerTUI) loadNamespaces(root *tview.TreeNode) {
+func (t *App) loadNamespaces(root *tview.TreeNode) {
 	namespaces, err := t.k8sClient.GetNamespaces()
 	if err != nil {
 		t.statusBar.SetText(fmt.Sprintf("Error fetching namespaces: %v", err))
@@ -40,7 +40,7 @@ func (t *LogExplorerTUI) loadNamespaces(root *tview.TreeNode) {
 	}
 }
 
-func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
+func (t *App) loadPods(nsNode *tview.TreeNode) {
 	namespace := nsNode.GetReference().(string)
 	t.showLoading(fmt.Sprintf("Fetching pods for %s", namespace))
 	t.clearLogView()
@@ -67,7 +67,7 @@ func (t *LogExplorerTUI) loadPods(nsNode *tview.TreeNode) {
 	})
 }
 
-func (t *LogExplorerTUI) loadContainers(podNode *tview.TreeNode, namespace, pod string) {
+func (t *App) loadContainers(podNode *tview.TreeNode, namespace, pod string) {
 	t.showLoading(fmt.Sprintf("Fetching containers for %s/%s", namespace, pod))
 	t.clearLogView()
 	containers, err := t.k8sClient.GetContainers(namespace, pod)

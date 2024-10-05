@@ -7,15 +7,15 @@ import (
 	"github.com/rivo/tview"
 )
 
-func (t *LogExplorerTUI) setStatus(message string) {
+func (t *App) setStatus(message string) {
 	t.statusBar.SetText(message)
 }
 
-func (t *LogExplorerTUI) setStatusError(message string) {
+func (t *App) setStatusError(message string) {
 	t.statusBar.SetText("[red]" + message + "[-]")
 }
 
-func (t *LogExplorerTUI) showLoading(message string) {
+func (t *App) showLoading(message string) {
 	t.App.QueueUpdateDraw(func() {
 		t.statusBar.SetText(message + " Loading...")
 	})

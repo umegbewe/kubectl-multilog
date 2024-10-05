@@ -3,14 +3,15 @@ package ui
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
-	k8s "github.com/umegbewe/kubectl-multilog/internal/k8s"
+	k8s "github.com/umegbewe/kubectl-multilog/internal/k8sclient"
 )
 
-func (t *LogExplorerTUI) createLogView() *tview.TextView {
+func (t *App) initLogView() *tview.TextView {
 	logView := tview.NewTextView()
 	logView.SetDynamicColors(true)
 	logView.SetRegions(true)
@@ -25,7 +26,7 @@ func (t *LogExplorerTUI) createLogView() *tview.TextView {
 	return logView
 }
 
-func (t *LogExplorerTUI) loadLogs(namespace, pod, container string) {
+func (t *App) loadLogs(namespace, pod, container string) {
 	if t.logStreamCancel != nil {
 		t.logStreamCancel()
 	}
@@ -43,6 +44,12 @@ func (t *LogExplorerTUI) loadLogs(namespace, pod, container string) {
 
 	t.App.QueueUpdateDraw(func() {
 		t.logView.Clear()
+		t.logBuffer.Clear()
+		for _, line := range strings.Split(logs, "\n") {
+			if line != "" {
+				t.processNewLogEntry(line)
+			}
+		}
 		t.logView.SetText(logs)
 		t.logView.ScrollToEnd()
 		t.statusBar.SetText(fmt.Sprintf("logs loaded for %s/%s/%s", namespace, pod, container))
@@ -57,46 +64,49 @@ func (t *LogExplorerTUI) loadLogs(namespace, pod, container string) {
 			if !ok {
 				return
 			}
-			t.App.QueueUpdateDraw(func() {
-				fmt.Fprintf(t.logView, "%s", logEntry)
-			})
+			t.processNewLogEntry(logEntry)
 		case <-ctx.Done():
 			return
 		}
 	}
 }
 
-func (t *LogExplorerTUI) processLiveLogs() {
-	for logEntry := range t.logChan {
-		t.App.QueueUpdateDraw(func() {
-			t.logMutex.Lock()
-			defer t.logMutex.Unlock()
+func (t *App) processNewLogEntry(logEntry string) {
+    t.logBuffer.AddLine(logEntry)
 
-			if logEntry.Timestamp.After(t.liveTailStartTime) {
-				formattedLog := fmt.Sprintf("[%s] [%s/%s/%s] %s: %s\n",
-					logEntry.Timestamp.Format(time.RFC3339),
-					logEntry.Namespace,
-					logEntry.Pod,
-					logEntry.Container,
-					logEntry.Level,
-					logEntry.Message)
-
-				fmt.Fprintf(t.logView, "%s", formattedLog)
-				t.logView.ScrollToEnd()
-			}
-		})
+    if t.searchResult != nil && t.searchResult.Term != "" {
+        t.updateSearchForNewLogs()
+    } else {
+		fmt.Fprintf(t.logView, "%s\n", logEntry)
 	}
 }
 
-func (t *LogExplorerTUI) clearLogView() {
-    t.App.QueueUpdateDraw(func() {
-        t.logView.Clear()
-        t.logView.SetText("")
-    })
+func (t *App) processLiveLogs() {
+	for logEntry := range t.logChan {
+		t.logMutex.Lock()
+		if logEntry.Timestamp.After(t.liveTailStartTime) {
+			formattedLog := fmt.Sprintf("[%s] [%s/%s/%s] %s: %s\n",
+				logEntry.Timestamp.Format(time.RFC3339),
+				logEntry.Namespace,
+				logEntry.Pod,
+				logEntry.Container,
+				logEntry.Level,
+				logEntry.Message)
+			t.processNewLogEntry(formattedLog)
+		}
+		t.logMutex.Unlock()
+	}
 }
 
-func (t *LogExplorerTUI) toggleLiveTail() {
-	if t.isLiveTailActive {
+func (t *App) clearLogView() {
+	t.App.QueueUpdateDraw(func() {
+		t.logView.Clear()
+		t.logView.SetText("")
+	})
+}
+
+func (t *App) toggleLiveTail() {
+	if t.LiveTailActive {
 		t.stopLiveTail()
 		t.liveTailBtn.SetLabel("Start Live Tail").SetBackgroundColor(colors.TopBar)
 	} else {
@@ -105,8 +115,8 @@ func (t *LogExplorerTUI) toggleLiveTail() {
 	}
 }
 
-func (t *LogExplorerTUI) startLiveTail() {
-	t.isLiveTailActive = true
+func (t *App) startLiveTail() {
+	t.LiveTailActive = true
 	t.logView.Clear()
 	t.statusBar.SetText("Live tail active")
 
@@ -118,8 +128,8 @@ func (t *LogExplorerTUI) startLiveTail() {
 	go t.processLiveLogs()
 }
 
-func (t *LogExplorerTUI) stopLiveTail() {
-	t.isLiveTailActive = false
+func (t *App) stopLiveTail() {
+	t.LiveTailActive = false
 	t.liveTailCancel()
 	close(t.logChan)
 	t.statusBar.SetText("Live tail stopped")
