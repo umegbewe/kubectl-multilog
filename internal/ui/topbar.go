@@ -10,7 +10,7 @@ import (
 func (t *App) initClusterDropdown(clusters []string) *tview.DropDown {
 	return tview.NewDropDown().
 		SetOptions(clusters, func(option string, index int) {
-			if err := t.k8sClient.SwitchCluster(option); err != nil {
+			if err := t.Model.SwitchCluster(option); err != nil {
 				t.setStatusError(fmt.Sprintf("Error switching cluster: %v", err))
 				return
 			}
@@ -41,15 +41,15 @@ func (t *App) initTopBar() *tview.Flex {
 	t.searchInput.SetFieldTextColor(colors.Text)
 
 	t.caseSensitiveBtn = tview.NewButton("Aa").SetSelectedFunc(func() {
-		t.searchOptions.CaseSensitive = !t.searchOptions.CaseSensitive
+		t.Model.SearchOptions.CaseSensitive = !t.Model.SearchOptions.CaseSensitive
 		t.performSearch(t.searchInput.GetText())
 	})
 	t.wholeWordBtn = tview.NewButton("W").SetSelectedFunc(func() {
-		t.searchOptions.WholeWord = !t.searchOptions.WholeWord
+		t.Model.SearchOptions.WholeWord = !t.Model.SearchOptions.WholeWord
 		t.performSearch(t.searchInput.GetText())
 	})
 	t.regexBtn = tview.NewButton(".*").SetSelectedFunc(func() {
-		t.searchOptions.RegexEnabled = !t.searchOptions.RegexEnabled
+		t.Model.SearchOptions.RegexEnabled = !t.Model.SearchOptions.RegexEnabled
 		t.performSearch(t.searchInput.GetText())
 	})
 	t.prevMatchBtn = tview.NewButton("◀").SetSelectedFunc(func() {
@@ -63,6 +63,7 @@ func (t *App) initTopBar() *tview.Flex {
 	t.matchCountText.SetTextAlign(tview.AlignCenter)
 
 	t.liveTailBtn = createButton("Live", colors.Button, t.toggleLiveTail)
+	t.liveTailBtn.SetDisabled(true)
 
 	searchBar := tview.NewFlex().
 		AddItem(t.searchInput, 0, 1, false).
@@ -95,16 +96,16 @@ func createButton(label string, bgColor tcell.Color, selectedFunc func()) *tview
 }
 
 func (t *App) toggleCaseSensitive() {
-	t.searchOptions.CaseSensitive = !t.searchOptions.CaseSensitive
+	t.Model.SearchOptions.CaseSensitive = !t.Model.SearchOptions.CaseSensitive
 	t.performSearch(t.searchInput.GetText())
 }
 
 func (t *App) toggleWholeWord() {
-	t.searchOptions.WholeWord = !t.searchOptions.WholeWord
+	t.Model.SearchOptions.WholeWord = !t.Model.SearchOptions.WholeWord
 	t.performSearch(t.searchInput.GetText())
 }
 
 func (t *App) toggleRegex() {
-	t.searchOptions.RegexEnabled = !t.searchOptions.RegexEnabled
+	t.Model.SearchOptions.RegexEnabled = !t.Model.SearchOptions.RegexEnabled
 	t.performSearch(t.searchInput.GetText())
 }

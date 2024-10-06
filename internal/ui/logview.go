@@ -27,14 +27,14 @@ func (t *App) initLogView() *tview.TextView {
 }
 
 func (t *App) loadLogs(namespace, pod, container string) {
-	if t.logStreamCancel != nil {
-		t.logStreamCancel()
+	if t.Model.LogStreamCancel != nil {
+		t.Model.LogStreamCancel()
 	}
 
 	t.showLoading(fmt.Sprintf("Loading logs for %s/%s/%s", namespace, pod, container))
 
 	tail := int64(150)
-	logs, logChan, err := t.k8sClient.GetLogs(namespace, pod, container, true, &tail)
+	logs, logChan, err := t.Model.K8sClient.GetLogs(namespace, pod, container, true, &tail)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
 			t.statusBar.SetText(fmt.Sprintf("Error fetching logs: %v", err))
@@ -44,7 +44,7 @@ func (t *App) loadLogs(namespace, pod, container string) {
 
 	t.App.QueueUpdateDraw(func() {
 		t.logView.Clear()
-		t.logBuffer.Clear()
+		t.Model.LogBuffer.Clear()
 		for _, line := range strings.Split(logs, "\n") {
 			if line != "" {
 				t.processNewLogEntry(line)
@@ -56,7 +56,7 @@ func (t *App) loadLogs(namespace, pod, container string) {
 	})
 
 	var ctx context.Context
-	ctx, t.logStreamCancel = context.WithCancel(context.Background())
+	ctx, t.Model.LogStreamCancel = context.WithCancel(context.Background())
 
 	for {
 		select {
@@ -72,9 +72,9 @@ func (t *App) loadLogs(namespace, pod, container string) {
 }
 
 func (t *App) processNewLogEntry(logEntry string) {
-    t.logBuffer.AddLine(logEntry)
+    t.Model.LogBuffer.AddLine(logEntry)
 
-    if t.searchResult != nil && t.searchResult.Term != "" {
+    if t.Model.SearchResult != nil && t.Model.SearchResult.Term != "" {
         t.updateSearchForNewLogs()
     } else {
 		fmt.Fprintf(t.logView, "%s\n", logEntry)
@@ -82,9 +82,9 @@ func (t *App) processNewLogEntry(logEntry string) {
 }
 
 func (t *App) processLiveLogs() {
-	for logEntry := range t.logChan {
-		t.logMutex.Lock()
-		if logEntry.Timestamp.After(t.liveTailStartTime) {
+	for logEntry := range t.Model.LogChan {
+		t.Model.LogMutex.Lock()
+		if logEntry.Timestamp.After(t.Model.LiveTailStartTime) {
 			formattedLog := fmt.Sprintf("[%s] [%s/%s/%s] %s: %s\n",
 				logEntry.Timestamp.Format(time.RFC3339),
 				logEntry.Namespace,
@@ -94,7 +94,7 @@ func (t *App) processLiveLogs() {
 				logEntry.Message)
 			t.processNewLogEntry(formattedLog)
 		}
-		t.logMutex.Unlock()
+		t.Model.LogMutex.Unlock()
 	}
 }
 
@@ -106,7 +106,7 @@ func (t *App) clearLogView() {
 }
 
 func (t *App) toggleLiveTail() {
-	if t.LiveTailActive {
+	if t.Model.LiveTailActive {
 		t.stopLiveTail()
 		t.liveTailBtn.SetLabel("Start Live Tail").SetBackgroundColor(colors.TopBar)
 	} else {
@@ -116,21 +116,21 @@ func (t *App) toggleLiveTail() {
 }
 
 func (t *App) startLiveTail() {
-	t.LiveTailActive = true
+	t.Model.LiveTailActive = true
 	t.logView.Clear()
 	t.statusBar.SetText("Live tail active")
 
-	t.liveTailStartTime = time.Now()
-	t.liveTailCtx, t.liveTailCancel = context.WithCancel(context.Background())
-	t.logChan = make(chan k8s.LogEntry, 100)
+	t.Model.LiveTailStartTime = time.Now()
+	t.Model.LiveTailCtx, t.Model.LiveTailCancel = context.WithCancel(context.Background())
+	t.Model.LogChan = make(chan k8s.LogEntry, 100)
 
-	go t.k8sClient.StreamAllLogs(t.liveTailCtx, t.logChan, t.liveTailStartTime)
+	go t.Model.K8sClient.StreamAllLogs(t.Model.LiveTailCtx, t.Model.LogChan, t.Model.LiveTailStartTime)
 	go t.processLiveLogs()
 }
 
 func (t *App) stopLiveTail() {
-	t.LiveTailActive = false
-	t.liveTailCancel()
-	close(t.logChan)
+	t.Model.LiveTailActive = false
+	t.Model.LiveTailCancel()
+	close(t.Model.LogChan)
 	t.statusBar.SetText("Live tail stopped")
 }

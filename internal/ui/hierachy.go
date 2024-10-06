@@ -24,7 +24,7 @@ func (t *App) refreshHierarchy() {
 }
 
 func (t *App) loadNamespaces(root *tview.TreeNode) {
-	namespaces, err := t.k8sClient.GetNamespaces()
+	namespaces, err := t.Model.GetNamespaces()
 	if err != nil {
 		t.statusBar.SetText(fmt.Sprintf("Error fetching namespaces: %v", err))
 		return
@@ -44,7 +44,7 @@ func (t *App) loadPods(nsNode *tview.TreeNode) {
 	namespace := nsNode.GetReference().(string)
 	t.showLoading(fmt.Sprintf("Fetching pods for %s", namespace))
 	t.clearLogView()
-	pods, err := t.k8sClient.GetPods(namespace)
+	pods, err := t.Model.GetPods(namespace)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
 			t.statusBar.SetText(fmt.Sprintf("Error fetching pods for %s: %v", namespace, err))
@@ -70,7 +70,7 @@ func (t *App) loadPods(nsNode *tview.TreeNode) {
 func (t *App) loadContainers(podNode *tview.TreeNode, namespace, pod string) {
 	t.showLoading(fmt.Sprintf("Fetching containers for %s/%s", namespace, pod))
 	t.clearLogView()
-	containers, err := t.k8sClient.GetContainers(namespace, pod)
+	containers, err := t.Model.GetContainers(namespace, pod)
 	if err != nil {
 		t.App.QueueUpdateDraw(func() {
 			t.statusBar.SetText(fmt.Sprintf("Error fetching containers for %s/%s: %v", namespace, pod, err))

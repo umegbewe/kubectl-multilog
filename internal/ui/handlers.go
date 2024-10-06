@@ -18,17 +18,17 @@ func (t *App) setupSearchHandler() {
 	})
 
 	t.caseSensitiveBtn.SetSelectedFunc(func() {
-		t.searchOptions.CaseSensitive = !t.searchOptions.CaseSensitive
+		t.Model.SearchOptions.CaseSensitive = !t.Model.SearchOptions.CaseSensitive
 		t.performSearch(t.searchInput.GetText())
 	})
 
 	t.wholeWordBtn.SetSelectedFunc(func() {
-		t.searchOptions.WholeWord = !t.searchOptions.WholeWord
+		t.Model.SearchOptions.WholeWord = !t.Model.SearchOptions.WholeWord
 		t.performSearch(t.searchInput.GetText())
 	})
 
 	t.regexBtn.SetSelectedFunc(func() {
-		t.searchOptions.RegexEnabled = !t.searchOptions.RegexEnabled
+		t.Model.SearchOptions.RegexEnabled = !t.Model.SearchOptions.RegexEnabled
 		t.performSearch(t.searchInput.GetText())
 	})
 
