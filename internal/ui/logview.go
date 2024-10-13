@@ -11,19 +11,39 @@ import (
 	k8s "github.com/umegbewe/kubectl-multilog/internal/k8sclient"
 )
 
-func (t *App) initLogView() *tview.TextView {
-	logView := tview.NewTextView()
-	logView.SetDynamicColors(true)
-	logView.SetRegions(true)
-	logView.SetScrollable(true)
-	logView.SetWordWrap(true)
-	logView.SetBackgroundColor(colors.Background)
-	logView.SetTitle("Logs")
-	logView.SetTitleColor(colors.Accent)
-	logView.SetBorder(true)
-	logView.SetBorderColor(colors.TopBar)
-	logView.SetBorderAttributes(tcell.AttrDim)
-	return logView
+func (t *App) initLogView() *tview.Flex {
+    t.scrollBar = NewScrollBar()
+    t.scrollBar.SetScrollCallback(func(line int) {
+        t.logTextView.ScrollTo(line, 0)
+    })
+
+	updateHandler := func()  {
+		t.updateScrollBar()
+	}
+	
+    logTextView := NewScrollableTextView(t.App, t.scrollBar, updateHandler)
+    logTextView.SetDynamicColors(true)
+    logTextView.SetRegions(true)
+    logTextView.SetScrollable(true)
+    logTextView.SetWordWrap(true)
+    logTextView.SetBackgroundColor(colors.Background)
+    logTextView.SetTitle("Logs")
+    logTextView.SetTitleColor(colors.Accent)
+    logTextView.SetBorder(true)
+    logTextView.SetBorderColor(colors.TopBar)
+    logTextView.SetBorderAttributes(tcell.AttrDim)
+
+    t.logTextView = logTextView
+
+    logViewContainer := tview.NewFlex().SetDirection(tview.FlexColumn).
+        AddItem(logTextView, 0, 1, true).
+        AddItem(t.scrollBar, 1, 0, false)
+
+    logTextView.SetChangedFunc(func() {
+            t.updateScrollBar()
+    })
+
+    return logViewContainer
 }
 
 func (t *App) loadLogs(namespace, pod, container string) {
@@ -43,16 +63,17 @@ func (t *App) loadLogs(namespace, pod, container string) {
 	}
 
 	t.App.QueueUpdateDraw(func() {
-		t.logView.Clear()
+		t.logTextView.Clear()
 		t.Model.LogBuffer.Clear()
 		for _, line := range strings.Split(logs, "\n") {
 			if line != "" {
 				t.processNewLogEntry(line)
 			}
 		}
-		t.logView.SetText(logs)
-		t.logView.ScrollToEnd()
+		t.logTextView.SetText(logs)
+		t.logTextView.ScrollToEnd()
 		t.statusBar.SetText(fmt.Sprintf("logs loaded for %s/%s/%s", namespace, pod, container))
+		t.updateScrollBar()
 	})
 
 	var ctx context.Context
@@ -72,12 +93,18 @@ func (t *App) loadLogs(namespace, pod, container string) {
 }
 
 func (t *App) processNewLogEntry(logEntry string) {
-    t.Model.LogBuffer.AddLine(logEntry)
+	t.Model.LogBuffer.AddLine(logEntry)
 
-    if t.Model.SearchResult != nil && t.Model.SearchResult.Term != "" {
-        t.updateSearchForNewLogs()
-    } else {
-		fmt.Fprintf(t.logView, "%s\n", logEntry)
+	if t.Model.SearchResult != nil && t.Model.SearchResult.Term != "" {
+		t.App.QueueUpdateDraw(func() {
+            t.updateSearchForNewLogs()
+            t.updateScrollBar()
+        })
+	} else {
+		t.App.QueueUpdateDraw(func() {
+            fmt.Fprintf(t.logTextView, "%s\n", logEntry)
+            t.updateScrollBar()
+        })
 	}
 }
 
@@ -100,8 +127,8 @@ func (t *App) processLiveLogs() {
 
 func (t *App) clearLogView() {
 	t.App.QueueUpdateDraw(func() {
-		t.logView.Clear()
-		t.logView.SetText("")
+		t.logTextView.Clear()
+		t.logTextView.SetText("")
 	})
 }
 
@@ -117,7 +144,7 @@ func (t *App) toggleLiveTail() {
 
 func (t *App) startLiveTail() {
 	t.Model.LiveTailActive = true
-	t.logView.Clear()
+	t.logTextView.Clear()
 	t.statusBar.SetText("Live tail active")
 
 	t.Model.LiveTailStartTime = time.Now()

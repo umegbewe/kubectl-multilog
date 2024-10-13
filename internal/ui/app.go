@@ -13,7 +13,9 @@ type App struct {
 	App              *tview.Application
 	layout           *tview.Flex
 	hierarchy        *tview.TreeView
-	logView          *tview.TextView
+	logViewContainer *tview.Flex
+	logTextView      *ScrollableTextView
+	scrollBar        *ScrollBar
 	searchInput      *tview.InputField
 	statusBar        *tview.TextView
 	clusterDropdown  *tview.DropDown
@@ -56,7 +58,8 @@ func (t *App) setupUI() error {
 	root := tview.NewTreeNode("Pods")
 	t.hierarchy.SetRoot(root)
 
-	t.logView = t.initLogView()
+	t.logViewContainer = t.initLogView()
+
 	topBar := t.initTopBar()
 	mainArea := t.initMainArea()
 

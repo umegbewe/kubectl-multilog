@@ -9,7 +9,7 @@ import (
 func (t *App) initMainArea() *tview.Flex {
 	return tview.NewFlex().
 		AddItem(t.hierarchy, 0, 1, true).
-		AddItem(t.logView, 0, 5, false)
+		AddItem(t.logViewContainer, 0, 5, false)
 }
 
 func (t *App) refreshHierarchy() {

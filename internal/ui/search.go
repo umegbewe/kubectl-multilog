@@ -33,7 +33,7 @@ func (t *App) performSearch(term string) {
 }
 
 func (t *App) highlightMatches() {
-	t.logView.Clear()
+	t.logTextView.Clear()
 	lines := t.Model.LogBuffer.GetLines()
 	matchIndices := make(map[int][]*search.Match)
 
@@ -52,9 +52,9 @@ func (t *App) highlightMatches() {
 		content := line.Content
 		if matches, ok := matchIndices[lineNumber]; ok {
 			highlightedContent := highlightMatchesInLineWithSelection(content, matches)
-			fmt.Fprintln(t.logView, highlightedContent)
+			fmt.Fprintln(t.logTextView, highlightedContent)
 		} else {
-			fmt.Fprintln(t.logView, content)
+			fmt.Fprintln(t.logTextView, content)
 		}
 	}
 }
@@ -118,7 +118,7 @@ func (t *App) navigateToMatch(direction int) {
 	t.highlightMatches()
 
 	currentMatch := t.Model.SearchResult.Matches[t.Model.CurrentMatchIndex]
-	t.logView.ScrollTo(currentMatch.LineNumber, 0)
+	t.logTextView.ScrollTo(currentMatch.LineNumber, 0)
 
 	t.matchCountText.SetText(fmt.Sprintf("Match %d/%d", t.Model.CurrentMatchIndex+1, matchCount))
 }
@@ -132,9 +132,9 @@ func (t *App) updateSearchStatus() {
 func (t *App) resetSearch() {
 	t.Model.SearchResult = nil
 	t.Model.CurrentMatchIndex = 0
-	t.logView.Clear()
-	t.logView.SetText(strings.Join(t.getVisibleLogLines(), "\n"))
-	t.logView.ScrollToEnd()
+	t.logTextView.Clear()
+	t.logTextView.SetText(strings.Join(t.getVisibleLogLines(), "\n"))
+	t.logTextView.ScrollToEnd()
 	t.setStatus("Search cleared")
 	t.matchCountText.SetText("")
 	t.prevMatchBtn.SetDisabled(true)
