@@ -15,7 +15,6 @@ type LogBuffer struct {
 	mutex           sync.RWMutex
 	maxLines        int
 	SearchIdx       *SearchIndex
-	LastSearchedPos int
 	NewLinesAdded   bool
 }
 
@@ -31,13 +30,6 @@ func (lb *LogBuffer) AddLine(content string) {
 	lb.mutex.Lock()
 	defer lb.mutex.Unlock()
 
-	if len(lb.Lines) >= lb.maxLines {
-		lb.Lines = lb.Lines[1:]
-		lb.LastSearchedPos--
-		if lb.LastSearchedPos < 0 {
-			lb.LastSearchedPos = 0
-		}
-	}
 	lb.Lines = append(lb.Lines, LogLine{Content: content})
 
 	words := strings.Fields(strings.ToLower(content))

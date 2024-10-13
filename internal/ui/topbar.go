@@ -31,7 +31,7 @@ func (t *App) initTopBar() *tview.Flex {
 	t.clusterDropdown.SetFieldWidth(100)
 	t.clusterDropdown.SetBackgroundColor(colors.TopBar)
 	t.clusterDropdown.SetListStyles(
-		tcell.StyleDefault.Background(colors.Sidebar), 
+		tcell.StyleDefault.Background(colors.Sidebar),
 		tcell.StyleDefault.Background(colors.Highlight).Foreground(colors.Text),
 	)
 
@@ -41,16 +41,13 @@ func (t *App) initTopBar() *tview.Flex {
 	t.searchInput.SetFieldTextColor(colors.Text)
 
 	t.caseSensitiveBtn = tview.NewButton("Aa").SetSelectedFunc(func() {
-		t.Model.SearchOptions.CaseSensitive = !t.Model.SearchOptions.CaseSensitive
-		t.performSearch(t.searchInput.GetText())
+		t.toggleCaseSensitive()
 	})
 	t.wholeWordBtn = tview.NewButton("W").SetSelectedFunc(func() {
-		t.Model.SearchOptions.WholeWord = !t.Model.SearchOptions.WholeWord
-		t.performSearch(t.searchInput.GetText())
+		t.toggleWholeWord()
 	})
 	t.regexBtn = tview.NewButton(".*").SetSelectedFunc(func() {
-		t.Model.SearchOptions.RegexEnabled = !t.Model.SearchOptions.RegexEnabled
-		t.performSearch(t.searchInput.GetText())
+		t.toggleRegex()
 	})
 	t.prevMatchBtn = tview.NewButton("◀").SetSelectedFunc(func() {
 		t.navigateToMatch(-1)
@@ -62,13 +59,14 @@ func (t *App) initTopBar() *tview.Flex {
 	t.matchCountText.SetBackgroundColor(colors.TopBar)
 	t.matchCountText.SetTextAlign(tview.AlignCenter)
 
-	t.liveTailBtn = createButton("Live", colors.Button, t.toggleLiveTail)
-	t.liveTailBtn.SetDisabled(true)
+	t.liveTailBtn = createButton("Live", colors.Button, func() {
+		t.toggleLiveTail()
+	})
 
 	searchBar := tview.NewFlex().
 		AddItem(t.searchInput, 0, 1, false).
 		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
-		AddItem(createButton("Aa", colors.Button,  t.toggleCaseSensitive), 4, 0, false).
+		AddItem(createButton("Aa", colors.Button, t.toggleCaseSensitive), 4, 0, false).
 		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
 		AddItem(createButton("W", colors.Button, t.toggleWholeWord), 3, 0, false).
 		AddItem(tview.NewBox().SetBackgroundColor(colors.TopBar), 1, 0, false).
@@ -77,22 +75,13 @@ func (t *App) initTopBar() *tview.Flex {
 		AddItem(createButton("◀", colors.NavButton, func() { t.navigateToMatch(-1) }), 3, 0, false).
 		AddItem(t.matchCountText, 12, 0, false).
 		AddItem(createButton("▶", colors.NavButton, func() { t.navigateToMatch(1) }), 3, 0, false)
-
 	t.setupSearchHandler()
-	
+
 	topBar.AddItem(t.clusterDropdown, 0, 1, false)
 	topBar.AddItem(searchBar, 0, 3, false)
 	topBar.AddItem(t.liveTailBtn, 0, 1, false)
 
 	return topBar
-}
-
-
-func createButton(label string, bgColor tcell.Color, selectedFunc func()) *tview.Button {
-	return tview.NewButton(label).
-		SetLabelColor(colors.Text).
-		SetStyle(tcell.StyleDefault.Background(bgColor)).
-		SetSelectedFunc(selectedFunc)
 }
 
 func (t *App) toggleCaseSensitive() {

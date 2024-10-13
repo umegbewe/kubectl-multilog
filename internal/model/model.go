@@ -27,8 +27,8 @@ type Model struct {
 
 func NewModel(k8sClient *k8s.Client) *Model {
 	return &Model{
-		K8sClient: k8sClient,
-		LogBuffer: search.NewLogBuffer(),
+		K8sClient:        k8sClient,
+		LogBuffer:        search.NewLogBuffer(),
 	}
 }
 
